@@ -9,8 +9,8 @@ export default function RecommendationTable({
 }: RecommendationTableProps) {
   if (!recommendations.length) {
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 text-sm text-slate-400">
-        No recommendation themes available yet.
+      <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-slate-100 p-5 text-sm text-slate-500">
+        No emerging themes to display yet.
       </div>
     );
   }
@@ -19,29 +19,29 @@ export default function RecommendationTable({
   const maxPulses    = Math.max(...recommendations.map((r) => r.pulsesActive ?? 0), 1);
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
-      <h2 className="text-base font-semibold text-slate-700 mb-1">
-        Recurring Signals
-      </h2>
-      <p className="text-xs text-slate-400 mb-4">
-        Themes from open-text responses — bar shows response frequency, pulse count shows how many runs this appeared
-      </p>
+    <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-slate-100 p-5">
+      <div className="mb-4">
+        <h2 className="text-sm font-semibold text-slate-700">Emerging Themes</h2>
+        <p className="text-xs text-slate-500 mt-0.5">
+          Themes repeatedly raised across pulse feedback over time
+        </p>
+      </div>
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-100">
-              <th className="text-left py-2 pr-4 font-semibold text-slate-500 w-[28%]">
-                Signal
+              <th className="text-left py-2 pr-4 font-semibold text-slate-600 w-[28%]">
+                Theme
               </th>
-              <th className="text-left py-2 pr-4 font-semibold text-slate-500 w-[22%]">
-                Frequency
+              <th className="text-left py-2 pr-4 font-semibold text-slate-600 w-[22%]">
+                Mentions
               </th>
-              <th className="text-left py-2 pr-4 font-semibold text-slate-500 w-[15%]">
-                Pulses
+              <th className="text-left py-2 pr-4 font-semibold text-slate-600 w-[15%]">
+                Recurrence
               </th>
-              <th className="text-left py-2 font-semibold text-slate-500">
-                Suggested Action
+              <th className="text-left py-2 font-semibold text-slate-600">
+                Response
               </th>
             </tr>
           </thead>
