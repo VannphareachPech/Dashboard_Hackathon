@@ -30,35 +30,28 @@ export default function Header({ cycle, generatedDate, totalResponses, teamSize 
 
   return (
     <header>
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
+      <div className="flex flex-col gap-0.5 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-slate-400 mb-1">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 mb-1">
             Internal Survey Report
           </p>
-          <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900 tracking-tight">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
             B2CSS Pulse Dashboard
           </h1>
         </div>
-        <div className="text-left sm:text-right text-xs leading-5 text-slate-500 sm:self-end max-w-xl">
-          <p>
-            <span className="font-medium text-slate-600">Cycle:</span> {cycle}
-            <span className="mx-2 text-slate-300">·</span>
-            <span className="font-medium text-slate-600">Generated:</span> {formatted}
-            {participation && (
-              <>
-                <span className="mx-2 text-slate-300">·</span>
-                <span className="font-medium text-slate-600">Participation:</span> {participation}
-              </>
-            )}
-            {isStale && (
-              <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
-                <span aria-hidden="true">⚠</span> Data may be outdated
-              </span>
-            )}
-          </p>
+        <div className="flex flex-col items-start sm:items-end gap-0.5 text-xs text-slate-500 mt-1 sm:mt-0">
+          <span>Cycle: <strong className="text-slate-700 font-medium">{cycle}</strong></span>
+          <span>Generated: {formatted}</span>
+          {participation && (
+            <span>Participation: <strong className="text-slate-700 font-medium">{participation}</strong></span>
+          )}
+          {isStale && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+              <span aria-hidden="true">⚠</span> Data may be outdated
+            </span>
+          )}
         </div>
       </div>
-      <div className="mt-4 h-px bg-slate-200" />
     </header>
   );
 }

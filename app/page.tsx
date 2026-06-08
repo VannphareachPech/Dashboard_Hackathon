@@ -1,7 +1,7 @@
 import { fetchDashboardData } from "@/lib/fetchDashboard";
+import { CheckCircle, TrendingUp, AlertTriangle } from "lucide-react";
 import Header from "@/components/Header";
 import HeroScore from "@/components/HeroScore";
-import NarrativeBlock from "@/components/NarrativeBlock";
 import SignalStrip from "@/components/SignalStrip";
 import FocusArea from "@/components/FocusArea";
 import SummaryCard from "@/components/SummaryCard";
@@ -14,19 +14,15 @@ import ResponseCountChart from "@/components/ResponseCountChart";
 import ResponseMixChart from "@/components/ResponseMixChart";
 import SectionNav from "@/components/SectionNav";
 
-function statusAccent(status: string): "green" | "amber" | "red" | "blue" {
-  const s = status.toLowerCase();
-  if (s === "strong") return "green";
-  if (s === "stable") return "blue";
-  if (s === "watch") return "amber";
-  if (s === "at risk") return "red";
-  return "blue";
-}
-
-function Section({ title, id, children }: { title: string; id?: string; children: React.ReactNode }) {
+function Section({ title, label, id, children }: { title: string; label?: string; id?: string; children: React.ReactNode }) {
   return (
-    <section id={id} className="space-y-2.5 scroll-mt-20">
-      <h2 className="text-base font-semibold tracking-tight text-slate-800">{title}</h2>
+    <section id={id} className="space-y-4 scroll-mt-20">
+      <div>
+        {label && (
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-0.5">{label}</h2>
+        )}
+        <p className="text-xl font-bold tracking-tight text-slate-900">{title}</p>
+      </div>
       {children}
     </section>
   );
@@ -76,30 +72,31 @@ export default async function DashboardPage() {
               teamSize={summary.teamSize}
             />
 
-            {/* Overall Team Sentiment */}
-            <HeroScore summary={summary} prevCycle={prevCycle} />
-
-            {/* Executive Summary — flows directly under score */}
-            {narrativeSummary && (
-              <section id="executive-summary" className="scroll-mt-20">
-                <NarrativeBlock text={narrativeSummary} />
-              </section>
-            )}
+            {/* Overall Team Sentiment + narrative inline */}
+            <HeroScore summary={summary} prevCycle={prevCycle} narrativeSummary={narrativeSummary} />
 
             {/* At a Glance */}
-            <section className="space-y-2.5">
-              <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">At a Glance</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                <SummaryCard
-                  label="Overall Status"
-                  value={summary.overallStatus}
-                  sub={`Score: ${summary.overallScore.toFixed(1)} / 5`}
-                  accent={statusAccent(summary.overallStatus)}
-                />
-                <SummaryCard label="Strongest Area" value={summary.highestArea} accent="green" />
-                <SummaryCard label="Needs Attention" value={summary.lowestArea}  accent="amber" />
-              </div>
-            </section>
+            <div className="grid grid-cols-3 gap-3">
+              <SummaryCard
+                label="Overall Status"
+                value={summary.overallStatus}
+                sub={`Score ${summary.overallScore.toFixed(1)} / 5`}
+                accent="blue"
+                icon={<CheckCircle className="size-3" />}
+              />
+              <SummaryCard
+                label="Strongest Area"
+                value={summary.highestArea}
+                accent="green"
+                icon={<TrendingUp className="size-3" />}
+              />
+              <SummaryCard
+                label="Needs Attention"
+                value={summary.lowestArea}
+                accent="red"
+                icon={<AlertTriangle className="size-3" />}
+              />
+            </div>
 
             {/* Focus This Pulse */}
             {summary.lowestArea && (
@@ -128,12 +125,12 @@ export default async function DashboardPage() {
           <div className="mt-5 space-y-5">
 
             {responseCounts && responseCounts.length > 0 && (
-              <Section id="participation-trend" title="Participation Trend">
-                <ResponseCountChart data={responseCounts} />
+              <Section id="participation-trend" label="Participation" title="Response Trend">
+                <ResponseCountChart data={responseCounts} summary={summary} />
               </Section>
             )}
 
-            <Section title="Pulse History">
+            <Section label="Scores" title="Score Over Time">
               <TrendChart trends={trends} />
             </Section>
 
@@ -146,18 +143,18 @@ export default async function DashboardPage() {
           <GroupDivider />
           <div className="mt-5 space-y-5">
 
-            <Section id="area-scores" title="Area Scores">
+            <Section id="area-scores" label="Scores" title="Pulse Area Breakdown">
               <ScoreChart areaScores={areaScores} />
             </Section>
 
             {responseMix && responseMix.length > 0 && (
-              <Section id="response-mix" title="Sentiment">
+              <Section id="response-mix" label="Sentiment" title="Team Sentiment by Area">
                 <ResponseMixChart data={responseMix} />
               </Section>
             )}
 
             {roleSplit && roleSplit.length > 0 && (
-              <Section id="role-split" title="Role Split">
+              <Section id="role-split" label="Roles" title="Score by Role Group">
                 <RoleSplitHeatmap rows={roleSplit} />
               </Section>
             )}
@@ -169,13 +166,11 @@ export default async function DashboardPage() {
                Recurring Signals → Commitments
           ════════════════════════════════════════════════════════ */}
           <GroupDivider />
-          <section id="next-steps" className="mt-5 space-y-0 scroll-mt-20">
+          <section id="next-steps" className="mt-5 space-y-4 scroll-mt-20">
 
-            <div className="mb-4">
-              <h2 className="text-base font-semibold tracking-tight text-slate-800">Next Steps</h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Themes and leadership responses to carry forward
-              </p>
+            <div>
+              <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-0.5">Next Steps</h2>
+              <p className="text-xl font-bold tracking-tight text-slate-900">Themes &amp; Leadership Actions</p>
             </div>
 
             <div>

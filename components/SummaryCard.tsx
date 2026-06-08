@@ -1,37 +1,28 @@
 interface SummaryCardProps {
   label: string;
   value: string | number;
-  /** Optional sub-label shown below the value */
   sub?: string;
-  /** Optional subtle accent: "green" | "amber" | "red" | "blue" */
   accent?: "green" | "amber" | "red" | "blue";
+  icon?: React.ReactNode;
 }
 
-const accentStyles: Record<NonNullable<SummaryCardProps["accent"]>, string> = {
-  green: "bg-emerald-300",
-  amber: "bg-amber-300",
-  red:   "bg-rose-300",
-  blue:  "bg-indigo-300",
+const accentBorder: Record<NonNullable<SummaryCardProps["accent"]>, string> = {
+  green: "border-l-[var(--status-strong)]",
+  amber: "border-l-[var(--status-watch)]",
+  red:   "border-l-[var(--status-concern)]",
+  blue:  "border-l-[var(--status-stable)]",
 };
 
-export default function SummaryCard({
-  label,
-  value,
-  sub,
-  accent,
-}: SummaryCardProps) {
+export default function SummaryCard({ label, value, sub, accent, icon }: SummaryCardProps) {
+  const borderClass = accent ? accentBorder[accent] : "";
   return (
-    <div
-      className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-slate-100 px-4 py-3.5 flex flex-col gap-1"
-    >
-      <div className="flex items-center gap-2">
-        {accent && <span className={`h-1.5 w-1.5 rounded-full ${accentStyles[accent]}`} />}
-        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-          {label}
-        </p>
-      </div>
-      <p className="text-lg font-semibold text-slate-900 leading-tight">{value}</p>
-      {sub && <p className="text-xs text-slate-600">{sub}</p>}
+    <div className={`rounded-lg border border-slate-200/60 bg-white px-4 py-3 flex flex-col gap-1 border-l-2 ${borderClass}`}>
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+        {icon}
+        {label}
+      </span>
+      <span className="text-base font-bold text-slate-900 text-balance">{value}</span>
+      {sub && <span className="text-xs text-slate-400">{sub}</span>}
     </div>
   );
 }

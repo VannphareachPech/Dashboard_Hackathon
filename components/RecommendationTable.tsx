@@ -9,90 +9,74 @@ export default function RecommendationTable({
 }: RecommendationTableProps) {
   if (!recommendations.length) {
     return (
-      <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-slate-100 p-5 text-sm text-slate-500">
+      <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-slate-100/60 p-5 text-sm text-slate-400">
         No emerging themes to display yet.
       </div>
     );
   }
 
   const maxFrequency = Math.max(...recommendations.map((r) => r.frequency), 1);
-  const maxPulses    = Math.max(...recommendations.map((r) => r.pulsesActive ?? 0), 1);
 
   return (
-    <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-slate-100 p-5">
-      <div className="mb-4">
-        <h2 className="text-sm font-semibold text-slate-700">Emerging Themes</h2>
-        <p className="text-xs text-slate-500 mt-0.5">
+    <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-slate-100/60 overflow-hidden">
+      <div className="px-5 py-3.5 border-b border-slate-100">
+        <h3 className="text-sm font-semibold text-slate-700">Emerging Themes</h3>
+        <p className="text-xs text-slate-400 mt-0.5">
           Themes repeatedly raised across pulse feedback over time
         </p>
       </div>
-
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-xs">
           <thead>
             <tr className="border-b border-slate-100">
-              <th className="text-left py-2 pr-4 font-semibold text-slate-600 w-[28%]">
-                Theme
-              </th>
-              <th className="text-left py-2 pr-4 font-semibold text-slate-600 w-[22%]">
-                Mentions
-              </th>
-              <th className="text-left py-2 pr-4 font-semibold text-slate-600 w-[15%]">
-                Recurrence
-              </th>
-              <th className="text-left py-2 font-semibold text-slate-600">
-                Response
-              </th>
+              {["Theme", "Mentions", "Recurrence", "Suggested Response"].map((h) => (
+                <th
+                  key={h}
+                  className="px-5 py-2 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider"
+                >
+                  {h}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {recommendations.map((r, i) => (
               <tr
                 key={r.theme}
-                className={i % 2 === 0 ? "bg-white" : "bg-slate-50/60"}
+                className={[
+                  "border-b border-slate-100/60 hover:bg-slate-50/30 transition-colors",
+                  i % 2 !== 0 ? "bg-slate-50/40" : "",
+                ].join(" ")}
               >
-                <td className="py-3 pr-4 font-medium text-slate-800">
-                  {r.theme}
-                </td>
-                <td className="py-3 pr-4">
+                <td className="px-5 py-2.5 font-semibold text-slate-800">{r.theme}</td>
+                <td className="px-5 py-2.5">
                   <div className="flex items-center gap-2">
-                    <div className="w-20 h-2 bg-slate-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-blue-400 rounded-full"
-                        style={{
-                          width: `${Math.round((r.frequency / maxFrequency) * 100)}%`,
-                        }}
-                      />
-                    </div>
-                    <span className="text-xs font-medium text-slate-500 tabular-nums">
-                      {r.frequency}
-                    </span>
+                    <div
+                      className="h-1.5 rounded-full bg-[var(--status-stable)]"
+                      style={{ width: `${Math.min(r.frequency * 6, 72)}px` }}
+                    />
+                    <span className="text-slate-400 tabular-nums">{r.frequency}</span>
                   </div>
                 </td>
-                <td className="py-3 pr-4">
+                <td className="px-5 py-2.5">
                   {r.pulsesActive !== undefined ? (
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-12 h-2 bg-slate-100 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full ${
-                            r.pulsesActive >= 3 ? "bg-amber-400" : "bg-slate-300"
-                          }`}
-                          style={{
-                            width: `${Math.round((r.pulsesActive / maxPulses) * 100)}%`,
-                          }}
-                        />
-                      </div>
-                      <span className={`text-xs font-semibold tabular-nums ${
-                        r.pulsesActive >= 3 ? "text-amber-600" : "text-slate-500"
-                      }`}>
-                        {r.pulsesActive}x
-                      </span>
-                    </div>
+                    <span
+                      className={[
+                        "inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded",
+                        r.pulsesActive >= 3
+                          ? "bg-[var(--status-concern)]/10 text-[var(--status-concern)]"
+                          : r.pulsesActive === 2
+                          ? "bg-[var(--status-watch)]/10 text-[var(--status-watch)]"
+                          : "bg-slate-100 text-slate-400",
+                      ].join(" ")}
+                    >
+                      {r.pulsesActive}×
+                    </span>
                   ) : (
-                    <span className="text-xs text-slate-300">—</span>
+                    <span className="text-slate-300">—</span>
                   )}
                 </td>
-                <td className="py-3 text-slate-600">{r.suggestedAction}</td>
+                <td className="px-5 py-2.5 text-slate-500">{r.suggestedAction}</td>
               </tr>
             ))}
           </tbody>

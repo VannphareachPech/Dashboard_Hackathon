@@ -6,22 +6,11 @@ interface Props {
   data: ResponseMixRow[];
 }
 
-type SentimentLevel = "strong" | "watch" | "concern";
-
-function getSentiment(positive: number): SentimentLevel {
-  if (positive >= 65) return "strong";
-  if (positive >= 50) return "watch";
-  return "concern";
+function statusBadge(positive: number): { label: string; className: string } {
+  if (positive >= 65) return { label: "Strong",  className: "bg-[var(--status-strong)]/10 text-[var(--status-strong)] border border-[var(--status-strong)]/25" };
+  if (positive >= 50) return { label: "Watch",   className: "bg-[var(--status-watch)]/10 text-[var(--status-watch)] border border-[var(--status-watch)]/25" };
+  return               { label: "Concern", className: "bg-[var(--status-concern)]/10 text-[var(--status-concern)] border border-[var(--status-concern)]/25" };
 }
-
-const SENTIMENT_CONFIG: Record<
-  SentimentLevel,
-  { label: string; pill: string; badge: string }
-> = {
-  strong:  { label: "Strong",  pill: "bg-emerald-50 text-emerald-600 ring-emerald-100", badge: "text-emerald-600" },
-  watch:   { label: "Watch",   pill: "bg-amber-50 text-amber-600 ring-amber-100",       badge: "text-amber-600"  },
-  concern: { label: "Concern", pill: "bg-rose-50 text-rose-600 ring-rose-100",          badge: "text-rose-600"   },
-};
 
 export default function ResponseMixChart({ data }: Props) {
   if (!data || data.length === 0) return null;
@@ -30,84 +19,59 @@ export default function ResponseMixChart({ data }: Props) {
   const sampleN = sorted[0]?.total ?? 0;
 
   return (
-    <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-slate-100 p-5">
+    <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-slate-100/60 p-5">
 
-      {/* ── Header ─────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between gap-3 mb-3">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
         <div>
-          <h3 className="text-sm font-semibold text-slate-700">Team Sentiment by Area</h3>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Positive, mixed, and negative sentiment across pulse areas · Based on {sampleN} responses
+          <h3 className="text-sm font-semibold text-slate-700">Positive, Mixed &amp; Negative Split</h3>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Based on {sampleN} responses across pulse areas
           </p>
         </div>
-
-        {/* Compact legend */}
-        <div className="flex items-center gap-3 text-[11px] text-slate-500 shrink-0">
-          {[
-            { color: "bg-emerald-300", label: "Positive" },
-            { color: "bg-amber-200",   label: "Mixed"    },
-            { color: "bg-rose-200",    label: "Negative" },
-          ].map(({ color, label }) => (
-            <span key={label} className="flex items-center gap-1">
-              <span className={`w-2 h-2 rounded-sm shrink-0 ${color}`} />
-              {label}
-            </span>
-          ))}
+        <div className="flex items-center gap-3 text-[10px] text-slate-400">
+          <span className="flex items-center gap-1.5">
+            <span className="size-1.5 rounded-full inline-block" style={{ background: "#16a34a" }} /> Positive
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="size-1.5 rounded-full inline-block" style={{ background: "#ca8a04" }} /> Mixed
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="size-1.5 rounded-full inline-block" style={{ background: "#dc2626" }} /> Negative
+          </span>
         </div>
       </div>
 
-      {/* ── Rows ───────────────────────────────────────────────── */}
-      <div className="space-y-2">
+      {/* Rows */}
+      <div className="space-y-3.5">
         {sorted.map((row) => {
-          const level = getSentiment(row.positive);
-          const cfg   = SENTIMENT_CONFIG[level];
-
+          const badge = statusBadge(row.positive);
           return (
-            <div
-              key={row.area}
-              className="group rounded-md px-2 py-1.5 -mx-2 hover:bg-slate-50 transition-colors duration-100"
-            >
-              {/* Area name + stats row */}
-              <div className="flex items-center justify-between gap-2 mb-1">
-                <span className="text-xs text-slate-600 font-medium truncate">{row.area}</span>
-                <div className="flex items-center gap-2 shrink-0">
-                  {/* Inline mixed / negative — visible on hover or when notable */}
-                  <span className="text-[11px] text-slate-500 tabular-nums hidden group-hover:inline">
-                    {row.mixed}% · {row.negative}%
+            <div key={row.area}>
+              <div className="flex items-center justify-between mb-1.5 gap-4">
+                <span className="text-xs font-medium text-slate-700">{row.area}</span>
+                <div className="flex items-center gap-2.5 shrink-0">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide ${badge.className}`}>
+                    {badge.label}
                   </span>
-                  <span
-                    className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[11px] font-medium ring-1 ring-inset ${cfg.pill}`}
-                  >
-                    {cfg.label}
-                  </span>
-                  <span className={`text-xs font-semibold tabular-nums w-8 text-right ${cfg.badge}`}>
+                  <span className="text-xs font-semibold text-slate-700 tabular-nums w-8 text-right">
                     {row.positive}%
                   </span>
                 </div>
               </div>
-
-              {/* Thin 3-segment bar */}
-              <div className="h-1.5 w-full rounded-full overflow-hidden flex bg-slate-100">
+              <div
+                className="flex h-1.5 w-full rounded-full overflow-hidden bg-slate-100"
+                role="img"
+                aria-label={`Positive: ${row.positive}%, Mixed: ${row.mixed}%, Negative: ${row.negative}%`}
+              >
                 {row.positive > 0 && (
-                  <div
-                    className="h-full bg-emerald-300 transition-all duration-300"
-                    style={{ width: `${row.positive}%` }}
-                    title={`Positive: ${row.positive}%`}
-                  />
+                  <div className="h-full" style={{ width: `${row.positive}%`, background: "#16a34a" }} />
                 )}
                 {row.mixed > 0 && (
-                  <div
-                    className="h-full bg-amber-200 transition-all duration-300"
-                    style={{ width: `${row.mixed}%` }}
-                    title={`Mixed: ${row.mixed}%`}
-                  />
+                  <div className="h-full" style={{ width: `${row.mixed}%`, background: "#ca8a04" }} />
                 )}
                 {row.negative > 0 && (
-                  <div
-                    className="h-full bg-rose-200 transition-all duration-300"
-                    style={{ width: `${row.negative}%` }}
-                    title={`Negative: ${row.negative}%`}
-                  />
+                  <div className="h-full" style={{ width: `${row.negative}%`, background: "#dc2626" }} />
                 )}
               </div>
             </div>

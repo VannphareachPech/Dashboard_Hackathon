@@ -2,6 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  /* Status colors — plain hex so they work in SVG (Recharts) and CSS */
+  --status-strong: #16a34a;
+  --status-stable: #6366f1;
+  --status-watch: #ca8a04;
+  --status-concern: #dc2626;
+}
+
 body {
   font-family: var(--font-geist-sans), system-ui, sans-serif;
   background-color: #f8fafc;
