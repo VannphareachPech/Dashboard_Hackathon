@@ -18,6 +18,7 @@ import ResponseCountChart from "@/components/ResponseCountChart";
 import ResponseMixChart from "@/components/ResponseMixChart";
 import CurrentPulseBarChart from "@/components/CurrentPulseBarChart";
 import OverallResponseMixTrendChart from "@/components/OverallResponseMixTrendChart";
+import ResponseCountByPulseChart from "@/components/ResponseCountByPulseChart";
 
 
 function statusAccent(status: string): "green" | "amber" | "red" | "blue" {
@@ -112,6 +113,13 @@ export default async function DashboardPage() {
       {responseAllRawData && responseAllRawData.length > 0 && (
         <Section title="Overall Response Mix Trend">
           <OverallResponseMixTrendChart responseAllRawData={responseAllRawData} />
+        </Section>
+      )}
+
+      {/* ── Response Count by Pulse ─────────────────────── */}
+      {responseAllRawData && responseAllRawData.length > 0 && (
+        <Section title="Response Count by Pulse">
+          <ResponseCountByPulseChart responseAllRawData={responseAllRawData} />
         </Section>
       )}
 
