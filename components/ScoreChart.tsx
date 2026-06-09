@@ -98,7 +98,7 @@ export default function ScoreChart({ areaScores }: ScoreChartProps) {
             <LabelList
               dataKey="score"
               position="top"
-              formatter={(v: number) => v.toFixed(1)}
+              formatter={(v) => (typeof v === "number" ? v.toFixed(1) : String(v ?? ""))}
               style={{ fontSize: 12, fill: "#475569", fontWeight: 500 }}
             />
             {data.map((entry) => (
