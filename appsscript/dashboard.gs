@@ -59,10 +59,44 @@ var AREA_NAMES = [
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu("Pulse Dashboard")
-    .addItem("Archive this pulse cycle", "archiveCurrentCycleTrend")
+    .addItem("🚀 Run Full Pipeline", "runFullPipelineFromMenu")
     .addSeparator()
+    .addItem("Archive this pulse cycle (Read-only)", "archiveCurrentCycleTrend")
     .addItem("Validate sheet structure", "validateAndAlert")
     .addToUi();
+}
+
+function runFullPipelineFromMenu() {
+  if (typeof runFullPipeline !== "function") {
+    SpreadsheetApp.getUi().alert("runFullPipeline() not found. Ensure Summary.gs is included in this project.");
+    return;
+  }
+
+  var ui = SpreadsheetApp.getUi();
+  var choice = ui.alert(
+    "Broadcast to Slack",
+    "Send the Pulse Summary to the Slack channel?",
+    ui.ButtonSet.YES_NO_CANCEL
+  );
+
+  if (choice === ui.Button.CANCEL || choice === ui.Button.CLOSE) return;
+
+  setSendToSlackApproved_(choice === ui.Button.YES);
+  runFullPipeline();
+}
+
+function setSendToSlackApproved_(approved) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_SETTINGS);
+  if (!sheet) return;
+
+  var values = sheet.getDataRange().getValues();
+  for (var r = 0; r < values.length; r++) {
+    if (normalizeLabel(values[r][0]) === "sendtoslackapproved") {
+      sheet.getRange(r + 1, 2).setValue(approved ? "TRUE" : "FALSE");
+      return;
+    }
+  }
 }
 
 // ── Main endpoint ─────────────────────────────────────────────────────────────
@@ -75,19 +109,63 @@ function doGet() {
         .setMimeType(ContentService.MimeType.JSON);
     }
 
-    var ss         = SpreadsheetApp.getActiveSpreadsheet();
-    var thresholds = getThresholds(ss);
-    var trends     = getTrends(ss);
-    var summary    = getSummary(ss, thresholds, trends);
+    var ss             = SpreadsheetApp.getActiveSpreadsheet();
+    var thresholds     = getThresholds(ss);
+    var trends         = getTrends(ss);
+    var summary        = getSummary(ss, thresholds, trends);
+    var areaScores     = getAreaScores(ss, thresholds, trends);
+    var recommendations = getRecommendations(ss);
+
+    // ── Enrich summary with lowest-area stats (avoids frontend lookup) ────
+    var lowestEntry = null;
+    for (var li = 0; li < areaScores.length; li++) {
+      if (areaScores[li].area === summary.lowestArea) { lowestEntry = areaScores[li]; break; }
+    }
+    if (lowestEntry) {
+      summary.lowestAreaScore = lowestEntry.score;
+      if (lowestEntry.pulsesAtRisk) summary.lowestAreaPulsesAtRisk = lowestEntry.pulsesAtRisk;
+    }
+
+    // ── scoreDelta: change from previous to current overall score ─────────
+    if (trends.length >= 2) {
+      summary.scoreDelta = Math.round(
+        (trends[trends.length - 1].overallScore - trends[trends.length - 2].overallScore) * 10
+      ) / 10;
+    }
+
+    // ── prevCycle ─────────────────────────────────────────────────────────
+    var prevCycle = trends.length >= 2 ? trends[trends.length - 2].cycle : null;
+
+    // ── focusSuggestion: recommendation action for the lowest-scoring area ─
+    var focusSuggestion = null;
+    var matchedRec = null;
+    for (var ri = 0; ri < recommendations.length; ri++) {
+      if (recommendations[ri].areaLink === summary.lowestArea) {
+        matchedRec = recommendations[ri];
+        break;
+      }
+    }
+    if (!matchedRec && summary.lowestArea) {
+      var firstWord = summary.lowestArea.split(" ")[0].toLowerCase();
+      for (var ri2 = 0; ri2 < recommendations.length; ri2++) {
+        if (recommendations[ri2].theme.toLowerCase().indexOf(firstWord) !== -1) {
+          matchedRec = recommendations[ri2];
+          break;
+        }
+      }
+    }
+    if (matchedRec) focusSuggestion = matchedRec.suggestedAction;
 
     var payload = {
-      cycle:            getCycle(ss),
+      cycle:            getDashboardCycle(ss, trends),
       generatedDate:    getGeneratedDate(),
       narrativeSummary: getNarrativeSummary(ss, summary, trends),
       summary:          summary,
-      areaScores:       getAreaScores(ss, thresholds, trends),
+      areaScores:       areaScores,
+      prevCycle:        prevCycle,
+      focusSuggestion:  focusSuggestion,
       trends:           trends,
-      recommendations:  getRecommendations(ss),
+      recommendations:  recommendations,
       actions:          getActions(ss),
       roleSplit:        getRoleSplit(ss),
       responseCounts:   getResponseCounts(ss, trends),
@@ -150,6 +228,14 @@ function getCycle(ss) {
   return map["currentcycle"] ? String(map["currentcycle"]).trim() : "Unknown Pulse";
 }
 
+function getDashboardCycle(ss, trends) {
+  if (trends && trends.length > 0) {
+    var latest = String(trends[trends.length - 1].cycle || "").trim();
+    if (latest) return latest;
+  }
+  return getCycle(ss);
+}
+
 function getGeneratedDate() {
   return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
 }
@@ -163,6 +249,68 @@ function getSummary(ss, thresholds, trends) {
   var overallScore   = parseFloat(map["overallscore"] || map["averagescore"]) || 0;
   var highestArea    = String(map["highestarea"] || map["toparea"] || "");
   var lowestArea     = String(map["lowestarea"] || map["bottomarea"] || "");
+
+  // Re-derive totalResponses from Form Responses filtered by active cycle.
+  // The Summary sheet value is an all-time total; we need only the current pulse count.
+  var settings = typeof readSettings === "function" ? readSettings() : {};
+  var formSheetName = settings.formSheetName || PULSE_CONFIG.FORM_RESPONSE_SHEET;
+  var formSheet = ss.getSheetByName(formSheetName);
+  if (formSheet && formSheet.getLastRow() > 1) {
+    var formData = formSheet.getDataRange().getValues();
+    var formHeaders = formData[0];
+    var fCycleCol = -1;
+    for (var fh = 0; fh < formHeaders.length; fh++) {
+      var fhn = normalizeLabel(formHeaders[fh]);
+      if (fhn === "pulsecycle" || fhn === "cycle") { fCycleCol = fh; break; }
+    }
+    var activeCycleLabel = (trends && trends.length > 0)
+      ? String(trends[trends.length - 1].cycle || "").trim()
+      : getCycle(ss);
+    if (fCycleCol >= 0 && activeCycleLabel) {
+      var cycleCount = 0;
+      for (var fr = 1; fr < formData.length; fr++) {
+        if (String(formData[fr][fCycleCol] || "").trim() === activeCycleLabel) cycleCount++;
+      }
+      if (cycleCount > 0) totalResponses = cycleCount;
+    } else if (!totalResponses) {
+      totalResponses = formSheet.getLastRow() - 1;
+    }
+  }
+
+  // Fallback: if no explicit Overall Score row, compute average from the 7 area rows
+  if (!overallScore) {
+    var areaKeys = AREA_NAMES.map(function(n) { return normalizeLabel(n); });
+    var areaVals = areaKeys.map(function(k) { return parseFloat(map[k]) || 0; })
+                           .filter(function(v) { return v > 0; });
+    if (areaVals.length > 0) {
+      overallScore = Math.round(areaVals.reduce(function(a, b) { return a + b; }, 0) / areaVals.length * 10) / 10;
+    }
+  }
+
+  // Fallback: auto-compute highestArea / lowestArea from area scores in the map
+  // when the Summary sheet has no explicit "Highest Area" / "Lowest Area" rows.
+  if (!highestArea || !lowestArea) {
+    var bestArea = "", bestScore = -1, worstArea = "", worstScore = 99;
+    for (var ai = 0; ai < AREA_NAMES.length; ai++) {
+      var areaKey = normalizeLabel(AREA_NAMES[ai]);
+      var areaScore = parseFloat(map[areaKey]);
+      if (isNaN(areaScore)) continue;
+      if (areaScore > bestScore)  { bestScore  = areaScore; bestArea  = AREA_NAMES[ai]; }
+      if (areaScore < worstScore) { worstScore = areaScore; worstArea = AREA_NAMES[ai]; }
+    }
+    if (!highestArea && bestArea)  highestArea = bestArea;
+    if (!lowestArea  && worstArea) lowestArea  = worstArea;
+  }
+
+  // Fallback: count Form Responses rows when Summary has no "Total Responses" row
+  if (!totalResponses) {
+    var settingsFallback = typeof readSettings === "function" ? readSettings() : {};
+    var formSheetNameFallback = settingsFallback.formSheetName || PULSE_CONFIG.FORM_RESPONSE_SHEET;
+    var formSheetFallback = ss.getSheetByName(formSheetNameFallback);
+    if (formSheetFallback && formSheetFallback.getLastRow() > 1) {
+      totalResponses = formSheetFallback.getLastRow() - 1; // subtract header row
+    }
+  }
 
   // Derive status from score — never rely on a human-typed label in the sheet
   var overallStatus = scoreToStatus(overallScore, thresholds);
@@ -180,9 +328,9 @@ function getSummary(ss, thresholds, trends) {
 // ── Trend history ─────────────────────────────────────────────────────────────
 /**
  * Reads the Trend sheet. Row 1 = headers.
- *   Col A = pulse label  (e.g. "Jun '26")
+ *   Col A = pulse label (e.g. "Jun '26")
  *   Col B = overall score
- *   Col C+ = per-area scores (header must match AREA_NAMES exactly)
+ *   Col C+ = per-area scores
  */
 function getTrends(ss) {
   var sheet = ss.getSheetByName(SHEET_TREND);
@@ -191,7 +339,7 @@ function getTrends(ss) {
   var data = sheet.getDataRange().getValues();
   if (data.length < 2) return [];
 
-  var headers = data[0]; // row 1
+  var headers = data[0];
   var trends = [];
 
   for (var i = 1; i < data.length; i++) {
@@ -201,17 +349,15 @@ function getTrends(ss) {
 
     var point = { cycle: cycle, overallScore: score };
 
-    // Attach per-area scores if area-named columns exist in header row
     for (var c = 2; c < headers.length; c++) {
-      var areaName  = String(headers[c]).trim();
+      var areaName = String(headers[c]).trim();
       var areaScore = parseFloat(data[i][c]);
-      if (areaName && !isNaN(areaScore)) {
-        point[areaName] = areaScore;
-      }
+      if (areaName && !isNaN(areaScore)) point[areaName] = areaScore;
     }
 
     trends.push(point);
   }
+
   return trends;
 }
 
@@ -371,7 +517,8 @@ function getActions(ss) {
       status:          String(data[i][3] || "").trim() || "Planned",
     };
     if (data[i].length > 4 && String(data[i][4]).trim()) action.pulseOpened = String(data[i][4]).trim();
-    if (data[i].length > 5 && String(data[i][5]).trim()) action.area = String(data[i][5]).trim();
+    if (data[i].length > 5 && String(data[i][5]).trim()) action.area        = String(data[i][5]).trim();
+    if (data[i].length > 6 && String(data[i][6]).trim()) action.notes       = String(data[i][6]).trim();
 
     actions.push(action);
   }
@@ -379,50 +526,13 @@ function getActions(ss) {
 }
 
 // ── Archive: append current cycle to Trend sheet ──────────────────────────────
-/**
- * Called via the custom menu "Pulse Dashboard > Archive this pulse cycle".
- * Appends one row to the Trend sheet: [cycle, overallScore, area1score, area2score, ...]
- * Writes column headers automatically if the sheet is empty.
- */
 function archiveCurrentCycleTrend() {
   var ui = SpreadsheetApp.getUi();
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-
-  var thresholds   = getThresholds(ss);
-  var cycle        = getCycle(ss);
-  var summary      = getSummary(ss, thresholds, []);
-  var trendSheet   = ss.getSheetByName(SHEET_TREND);
-
-  if (!trendSheet) {
-    ui.alert("Could not find a sheet named \"" + SHEET_TREND + "\". Please create it first.");
-    return;
-  }
-
-  // Write headers if sheet is empty
-  var existing = trendSheet.getDataRange().getValues();
-  if (existing.length === 0 || String(existing[0][0]).trim() === "") {
-    trendSheet.appendRow(["Pulse", "Overall Score"].concat(AREA_NAMES));
-  }
-
-  // Build row: cycle, overall score, then per-area scores in AREA_NAMES order
-  var summarySheet = ss.getSheetByName(SHEET_SUMMARY);
-  var summaryData  = summarySheet ? summarySheet.getDataRange().getValues() : [];
-  var areaScoreMap = {};
-
-  for (var i = 0; i < summaryData.length; i++) {
-    var area = String(summaryData[i][0]).trim();
-    if (AREA_NAMES.indexOf(area) !== -1) {
-      areaScoreMap[area] = parseFloat(summaryData[i][1]) || 0;
-    }
-  }
-
-  var row = [cycle, summary.overallScore];
-  for (var a = 0; a < AREA_NAMES.length; a++) {
-    row.push(areaScoreMap[AREA_NAMES[a]] !== undefined ? areaScoreMap[AREA_NAMES[a]] : "");
-  }
-
-  trendSheet.appendRow(row);
-  ui.alert("Archived " + cycle + " to the Trend sheet (" + row.length + " columns).");
+  ui.alert(
+    "Manual archive is disabled.\n\n" +
+    "Trend is populated only by the canonical pipeline: Run Full Pipeline (generateLeadershipSummary -> appendTrend).\n\n" +
+    "Use Pulse Dashboard > 🚀 Run Full Pipeline to update Trend."
+  );
 }
 
 // ── Role Split ────────────────────────────────────────────────────────────────
@@ -464,6 +574,11 @@ function getRoleSplit(ss) {
   // Detect role and cycle columns from headers
   var roleCol  = 1;  // default col B
   var cycleCol = -1;
+  // Use Trend-first cycle so label stays in sync with getDashboardCycle().
+  var roleSplitTrends = getTrends(ss);
+  var activeCycle = (roleSplitTrends.length > 0)
+    ? String(roleSplitTrends[roleSplitTrends.length - 1].cycle || "").trim()
+    : getCycle(ss);
   for (var hc = 0; hc < headers.length; hc++) {
     var hn = normalizeLabel(headers[hc]);
     if (hn === "pulsecycle" || hn === "cycle") cycleCol = hc;
@@ -488,8 +603,6 @@ function getRoleSplit(ss) {
     if (found >= 0) areaCols.push({ area: area, col: found });
   }
   if (!areaCols.length) return [];
-
-  var activeCycle = getCycle(ss);
 
   // Accumulate sum + count per role + area
   var acc = {}; // acc[role][areaName] = { sum, count }
@@ -619,8 +732,13 @@ function writeRoleSplitToSheet_(ss) {
   var sheet = getOrCreateSheet_(ss, SHEET_ROLE_SPLIT);
   sheet.clear();
 
-  // Derive role group names from first row
-  var groups = Object.keys(rows[0].scores);
+  // Fixed column order: Product Management → Product Development → Shared
+  // Falls back to whatever role groups exist if those exact names are absent.
+  var preferredOrder = ["Product Management", "Product Development", "Shared"];
+  var availableGroups = Object.keys(rows[0].scores);
+  var ordered = preferredOrder.filter(function(g) { return availableGroups.indexOf(g) !== -1; });
+  var rest    = availableGroups.filter(function(g) { return ordered.indexOf(g) === -1; });
+  var groups  = ordered.concat(rest);
 
   // Header row
   var header = ["Survey Area"].concat(groups).concat(["Role Gap"]);
@@ -652,7 +770,7 @@ function writeRoleSplitToSheet_(ss) {
     // Score columns (skip col A = area name)
     for (var c = 1; c < groups.length + 1; c++) {
       var val = rows[r].scores[groups[c - 1]];
-      if (val === undefined) continue;
+      if (val === undefined || val === "") continue;
       var bg = val >= 4.0 ? "#d4edda"   // green
              : val >= 3.5 ? "#e8f5e9"   // light green
              : val >= 3.0 ? "#fff3cd"   // amber
@@ -670,13 +788,25 @@ function writeRoleSplitToSheet_(ss) {
   }
 
   // Column widths
-  sheet.setColumnWidth(1, 220);
-  for (var cw = 2; cw <= numCols; cw++) {
+  sheet.setColumnWidth(1, 240);
+  for (var cw = 2; cw <= header.length; cw++) {
     sheet.setColumnWidth(cw, 160);
   }
 
   sheet.setFrozenRows(1);
-  Logger.log("Role Split sheet updated with " + numDataRows + " areas.");
+
+  // Roboto font, centered numbers
+  var totalRows = numDataRows + 1;
+  var numCols   = header.length;
+  var fullRange = sheet.getRange(1, 1, totalRows, numCols);
+  fullRange.setFontFamily("Roboto")
+           .setFontSize(12)
+           .setVerticalAlignment("middle");
+  if (numCols > 1) {
+    sheet.getRange(1, 2, totalRows, numCols - 1).setHorizontalAlignment("center");
+  }
+
+  Logger.log("Role Split sheet updated with locked column order & Roboto styling.");
 }
 
 // ── Response Counts ───────────────────────────────────────────────────────────
@@ -688,6 +818,10 @@ function writeRoleSplitToSheet_(ss) {
  * Returns points only for cycles that have a count.
  */
 function getResponseCounts(ss, trends) {
+  var fromFormResponses = getResponseCountsFromFormResponses_(ss, trends);
+  if (fromFormResponses.length > 0) return fromFormResponses;
+
+  // Fallback path: legacy behavior from Trend sheet response column.
   var sheet = ss.getSheetByName(SHEET_TREND);
   var points = [];
 
@@ -731,6 +865,106 @@ function getResponseCounts(ss, trends) {
   return points;
 }
 
+/**
+ * Primary source for participation trend:
+ * counts Form Responses rows grouped by pulse cycle and aligns them to Trend cycles.
+ * This avoids manual/edited response counts inside the Trend sheet.
+ */
+function getResponseCountsFromFormResponses_(ss, trends) {
+  trends = trends || [];
+
+  var settings = (typeof readSettings === "function") ? readSettings() : {};
+  var sheetName = settings.formSheetName ||
+    ((typeof PULSE_CONFIG !== "undefined" && PULSE_CONFIG.FORM_RESPONSE_SHEET)
+      ? PULSE_CONFIG.FORM_RESPONSE_SHEET
+      : "Form Responses 1");
+
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0];
+
+  // Detect cycle column from header labels.
+  var cycleCol = -1;
+  for (var c = 0; c < headers.length; c++) {
+    var h = normalizeLabel(headers[c]);
+    if (h === "pulsecycle" || h === "cycle") {
+      cycleCol = c;
+      break;
+    }
+  }
+  if (cycleCol < 0) return [];
+
+  var rawCounts = {};     // exact cycle label -> count
+  var normCounts = {};    // normalized label -> count (format-tolerant match)
+
+  for (var i = 1; i < data.length; i++) {
+    var cycle = String(data[i][cycleCol] || "").trim();
+    if (!cycle) continue;
+
+    rawCounts[cycle] = (rawCounts[cycle] || 0) + 1;
+
+    var nk = normalizeLabel(cycle);
+    if (nk) normCounts[nk] = (normCounts[nk] || 0) + 1;
+  }
+
+  var points = [];
+  var pointKeys = {};
+  var trendOrder = {};
+  for (var ti = 0; ti < (trends || []).length; ti++) {
+    var trendKey = normalizeLabel(String(trends[ti].cycle || "").trim());
+    if (trendKey && trendOrder[trendKey] === undefined) trendOrder[trendKey] = ti;
+  }
+
+  // First, keep trend-aligned points when matching counts exist.
+  for (var t = 0; t < trends.length; t++) {
+    var trendCycle = String(trends[t].cycle || "").trim();
+    if (!trendCycle) continue;
+
+    var count = rawCounts[trendCycle] || 0;
+    if (!count) {
+      var trendNorm = normalizeLabel(trendCycle);
+      if (trendNorm && normCounts[trendNorm]) count = normCounts[trendNorm];
+    }
+
+    if (count > 0) {
+      points.push({ cycle: trendCycle, responseCount: count });
+      pointKeys[normalizeLabel(trendCycle)] = true;
+    }
+  }
+
+  // Then include cycles found in Form Responses but missing from Trend.
+  var formCycles = Object.keys(rawCounts);
+  for (var fc = 0; fc < formCycles.length; fc++) {
+    var formCycle = formCycles[fc];
+    var formKey = normalizeLabel(formCycle);
+    if (!formKey || pointKeys[formKey]) continue;
+    points.push({ cycle: formCycle, responseCount: rawCounts[formCycle] });
+    pointKeys[formKey] = true;
+  }
+
+  // Sort by trend order when available, otherwise by pulse number (e.g. Pulse 1, Pulse 2).
+  points.sort(function(a, b) {
+    var ak = normalizeLabel(a.cycle);
+    var bk = normalizeLabel(b.cycle);
+    var ai = trendOrder[ak];
+    var bi = trendOrder[bk];
+
+    if (ai !== undefined && bi !== undefined) return ai - bi;
+    if (ai !== undefined) return -1;
+    if (bi !== undefined) return 1;
+
+    var an = parseInt(String(a.cycle).replace(/[^0-9]/g, ""), 10);
+    var bn = parseInt(String(b.cycle).replace(/[^0-9]/g, ""), 10);
+    if (!isNaN(an) && !isNaN(bn) && an !== bn) return an - bn;
+
+    return String(a.cycle).localeCompare(String(b.cycle));
+  });
+
+  return points;
+}
+
 // ── Current Pulse Response Mix ───────────────────────────────────────────────
 /**
  * Builds current pulse response mix by area:
@@ -760,7 +994,11 @@ function getCurrentPulseResponseMix(ss) {
     }
   }
 
-  var activeCycle = getCycle(ss);
+  // Use the same Trend-first source as getDashboardCycle to stay in sync.
+  var trends = getTrends(ss);
+  var activeCycle = (trends.length > 0)
+    ? String(trends[trends.length - 1].cycle || "").trim()
+    : getCycle(ss);
   if (cycleCol >= 0 && activeCycle) {
     rows = rows.filter(function(r) {
       return String(r[cycleCol] || "").trim() === activeCycle;

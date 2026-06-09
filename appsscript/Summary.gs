@@ -26,6 +26,11 @@ function generateLeadershipSummary() {
   output.appendRow([now, cycle, totalResponses, highestArea, lowestArea, focus]);
   output.getRange(output.getLastRow(), 6).setWrap(true);
 
+  // Rebuild missing historical cycles from Form Responses before current-cycle append.
+  if (typeof backfillTrendFromFormResponses_ === "function") {
+    backfillTrendFromFormResponses_(ss);
+  }
+
   appendTrend(rows, classified, {
     cycle: cycle,
     now: now,

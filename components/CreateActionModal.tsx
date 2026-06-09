@@ -164,7 +164,7 @@ export default function CreateActionModal({
                   type="button"
                   onClick={() => { setFocusOpen((v) => !v); setStatusOpen(false); }}
                   className={[
-                    "w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-sm text-left transition-all",
+                    "w-full appearance-none flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-sm text-left transition-colors",
                     "focus:outline-none",
                     errors.area
                       ? "border-rose-300 bg-rose-50/30"
@@ -232,8 +232,8 @@ export default function CreateActionModal({
                 placeholder="e.g. Run monthly team retro"
                 maxLength={200}
                 className={[
-                  "w-full rounded-xl border text-sm px-3.5 py-2.5 text-[#1E293B] placeholder-slate-400",
-                  "focus:outline-none focus:ring-2 focus:ring-indigo-400/25 focus:border-indigo-400 transition-all",
+                  "w-full appearance-none rounded-xl border text-sm px-3.5 py-2.5 text-[#1E293B] placeholder-slate-400",
+                  "focus:outline-none focus:ring-2 focus:ring-indigo-400/25 focus:border-indigo-400 transition-colors",
                   errors.suggestedAction ? "border-rose-300 bg-rose-50/30" : "border-slate-200 hover:border-slate-300",
                 ].join(" ")}
               />
@@ -256,8 +256,8 @@ export default function CreateActionModal({
                   placeholder="Name or team"
                   maxLength={100}
                   className={[
-                    "w-full rounded-xl border text-sm px-3.5 py-2.5 text-[#1E293B] placeholder-slate-400",
-                    "focus:outline-none focus:ring-2 focus:ring-indigo-400/25 focus:border-indigo-400 transition-all",
+                    "w-full appearance-none rounded-xl border text-sm px-3.5 py-2.5 text-[#1E293B] placeholder-slate-400",
+                    "focus:outline-none focus:ring-2 focus:ring-indigo-400/25 focus:border-indigo-400 transition-colors",
                     errors.owner ? "border-rose-300 bg-rose-50/30" : "border-slate-200 hover:border-slate-300",
                   ].join(" ")}
                 />
@@ -274,7 +274,7 @@ export default function CreateActionModal({
                     type="button"
                     onClick={() => { setStatusOpen((v) => !v); setFocusOpen(false); }}
                     className={[
-                      "w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-sm transition-all",
+                      "w-full appearance-none flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-sm transition-colors",
                       "focus:outline-none",
                       statusOpen
                         ? "border-indigo-400 ring-2 ring-indigo-400/25 bg-white"
@@ -328,7 +328,7 @@ export default function CreateActionModal({
                 placeholder="Context, blockers, or next steps…"
                 rows={3}
                 maxLength={500}
-                className="w-full rounded-xl border border-slate-200 hover:border-slate-300 text-sm px-3.5 py-2.5 text-[#1E293B] placeholder-slate-400 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-400/25 focus:border-indigo-400 transition-all"
+                className="w-full appearance-none rounded-xl border border-slate-200 hover:border-slate-300 text-sm px-3.5 py-2.5 text-[#1E293B] placeholder-slate-400 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-400/25 focus:border-indigo-400 transition-colors"
               />
             </div>
           </div>

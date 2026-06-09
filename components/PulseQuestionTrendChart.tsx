@@ -1,168 +1,197 @@
 "use client";
 
+import { useState } from "react";
 import {
   LineChart,
   Line,
   XAxis,
   YAxis,
   CartesianGrid,
+  ReferenceLine,
   Tooltip,
-  Legend,
   ResponsiveContainer,
 } from "recharts";
-import type { ResponseRawData } from "@/types/dashboard";
+import type { TrendPoint } from "@/types/dashboard";
 
-// Area names matching the Apps Script AREA_NAMES constant
-const AREA_NAMES = [
-  "Direction & Priorities",
-  "Value & Focus",
-  "Ownership & Empowerment",
-  "Ways of Working",
-  "Collaboration & Support",
-  "Workload & Sustainability",
-  "Team Climate & Safety",
+const SERIES = [
+  { key: "Collaboration & Support",    label: "Collaboration & Support",    color: "#7C3AED" },
+  { key: "Direction & Priorities",     label: "Direction & Priorities",     color: "#2563EB" },
+  { key: "Ownership & Empowerment",    label: "Ownership & Empowerment",    color: "#16A34A" },
+  { key: "Team Climate & Safety",      label: "Team Climate & Safety",      color: "#DB2777" },
+  { key: "Value & Focus",              label: "Value & Focus",              color: "#D97706" },
+  { key: "Ways of Working",            label: "Ways of Working",            color: "#DC2626" },
+  { key: "Workload & Sustainability",  label: "Workload & Sustainability",  color: "#6B7280" },
 ];
 
-// Color palette for each area (matching the chart design)
-const AREA_COLORS: Record<string, string> = {
-  "Direction & Priorities": "#2563eb",      // blue
-  "Value & Focus": "#f97316",               // orange
-  "Ownership & Empowerment": "#16a34a",     // green
-  "Ways of Working": "#dc2626",             // red
-  "Collaboration & Support": "#9333ea",     // purple
-  "Workload & Sustainability": "#78716c",   // brown/gray
-  "Team Climate & Safety": "#ec4899",       // pink
-};
+type ChartRow = { pulse: string; [key: string]: string | number };
 
-interface Props {
-  responseAllRawData: ResponseRawData[];
+function getPulseNumber(label: string): number | null {
+  const m = String(label).match(/pulse\s*(\d+)/i);
+  return m ? Number(m[1]) : null;
 }
 
-export default function PulseQuestionTrendChart({ responseAllRawData }: Props) {
-  if (!responseAllRawData || responseAllRawData.length === 0) {
+function getNumericValue(point: TrendPoint, area: string): number | undefined {
+  const direct = Number(point[area]);
+  if (!Number.isNaN(direct) && direct > 0) return Math.round(direct * 10) / 10;
+  const suffix = Number(point[area + " Score"]);
+  if (!Number.isNaN(suffix) && suffix > 0) return Math.round(suffix * 10) / 10;
+  return undefined;
+}
+
+type TooltipPayloadItem = { dataKey: string; value: number; color: string; name: string };
+
+function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: TooltipPayloadItem[]; label?: string }) {
+  if (!active || !payload?.length) return null;
+  const sorted = [...payload].sort((a, b) => b.value - a.value);
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white px-3 py-2.5 shadow-lg text-xs min-w-[200px]">
+      <p className="font-semibold text-gray-800 mb-2">{label}</p>
+      <div className="flex flex-col gap-1">
+        {sorted.map((p) => (
+          <div key={p.dataKey} className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-1.5">
+              <span className="inline-block size-2 rounded-full shrink-0" style={{ background: p.color }} />
+              <span className="text-gray-500">{p.name}</span>
+            </div>
+            <span className="font-semibold tabular-nums" style={{ color: p.value < 3.5 ? "#EF4444" : p.color }}>
+              {p.value.toFixed(1)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+type DotProps = { cx?: number; cy?: number; payload?: Record<string, number | string>; dataKey?: string; color?: string };
+
+function CustomDot({ cx, cy, payload, dataKey, color }: DotProps) {
+  if (!cx || !cy || !payload || !dataKey) return null;
+  const val = payload[dataKey] as number;
+  const fill = val < 3.5 ? "#EF4444" : color;
+  return <circle cx={cx} cy={cy} r={4} fill={fill} stroke="#fff" strokeWidth={2} />;
+}
+
+function ActiveDot({ cx, cy, payload, dataKey, color }: DotProps) {
+  if (!cx || !cy || !payload || !dataKey) return null;
+  const val = payload[dataKey] as number;
+  const fill = val < 3.5 ? "#EF4444" : color;
+  return <circle cx={cx} cy={cy} r={5} fill={fill} stroke="#fff" strokeWidth={2} />;
+}
+
+interface Props {
+  trends: TrendPoint[];
+}
+
+export default function PulseQuestionTrendChart({ trends }: Props) {
+  const [hovered, setHovered] = useState<string | null>(null);
+
+  if (!trends || trends.length === 0) {
     return (
       <div className="rounded-lg border border-slate-200 bg-white p-6">
-        <h3 className="text-lg font-semibold text-slate-700 mb-4">
-          Pulse Question Score Trends
-        </h3>
         <p className="text-sm text-slate-400">No trend data available</p>
       </div>
     );
   }
 
-  // Group records by "Pulse Cycle" and compute average score per area
-  const groupMap = new Map<string, { sums: Record<string, number>; counts: Record<string, number> }>();
-
-  responseAllRawData.forEach((record) => {
-    const pulseLabel = String(record["Pulse Cycle"] ?? "").trim();
-    if (!pulseLabel) return;
-
-    if (!groupMap.has(pulseLabel)) {
-      groupMap.set(pulseLabel, { sums: {}, counts: {} });
-    }
-    const group = groupMap.get(pulseLabel)!;
-
-    AREA_NAMES.forEach((area) => {
-      const val = record[area];
-      if (typeof val === "number" && !isNaN(val)) {
-        group.sums[area] = (group.sums[area] ?? 0) + val;
-        group.counts[area] = (group.counts[area] ?? 0) + 1;
-      }
-    });
-  });
-
-  // Build chart data array sorted by pulse label
-  const chartData = Array.from(groupMap.entries())
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([pulseLabel, { sums, counts }]) => {
-      const dataPoint: Record<string, string | number> = { pulseLabel };
-      AREA_NAMES.forEach((area) => {
-        if (counts[area] > 0) {
-          dataPoint[area] = Math.round((sums[area] / counts[area]) * 10) / 10;
-        }
+  const chartData: ChartRow[] = [...trends]
+    .filter((t) => String(t.cycle || "").trim().length > 0)
+    .sort((a, b) => {
+      const an = getPulseNumber(a.cycle);
+      const bn = getPulseNumber(b.cycle);
+      if (an !== null && bn !== null) return an - bn;
+      return String(a.cycle).localeCompare(String(b.cycle));
+    })
+    .map((point) => {
+      const row: ChartRow = { pulse: String(point.cycle) };
+      SERIES.forEach(({ key }) => {
+        const val = getNumericValue(point, key);
+        if (val !== undefined) row[key] = val;
       });
-      return dataPoint;
+      return row;
     });
 
-    console.log("Processed chart data:", chartData);
-
-  // Custom label component to show values on the last point
-  const CustomLabel = (props: any) => {
-    const { x, y, value, dataKey, index } = props;
-    const isLastPoint = index === chartData.length - 1;
-    
-    if (!isLastPoint || value == null) return null;
-    
+  const hasData = chartData.some((row) => SERIES.some(({ key }) => typeof row[key] === "number"));
+  if (!hasData) {
     return (
-      <text
-        x={x}
-        y={y - 10}
-        fill="#475569"
-        fontSize={11}
-        fontWeight={600}
-        textAnchor="middle"
-      >
-        {value.toFixed(1)}
-      </text>
+      <div className="rounded-lg border border-slate-200 bg-white p-6">
+        <p className="text-sm text-slate-400">No trend data available</p>
+      </div>
     );
-  };
+  }
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-6">
-      <h3 className="text-lg font-semibold text-slate-700 mb-4">
-        Pulse Question Score Trends
-      </h3>
-      <ResponsiveContainer width="100%" height={400}>
-        <LineChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-          <XAxis
-            dataKey="pulseLabel"
-            stroke="#94a3b8"
-            tick={{ fill: "#475569", fontSize: 12 }}
-            axisLine={{ stroke: "#cbd5e1" }}
+    <div className="rounded-lg border border-slate-200 bg-white p-5 flex flex-col gap-4">
+      <div>
+        <h2 className="text-lg font-semibold text-slate-700">Pulse Area Performance Over Time</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          How each engagement area has trended across cycles — scores below 3.5 flagged in red.
+        </p>
+      </div>
+
+      {/* Series toggles */}
+      <div className="flex flex-wrap gap-2">
+        {SERIES.map((s) => {
+          const isActive = hovered === null || hovered === s.key;
+          return (
+            <button
+              key={s.key}
+              onMouseEnter={() => setHovered(s.key)}
+              onMouseLeave={() => setHovered(null)}
+              onClick={() => setHovered(hovered === s.key ? null : s.key)}
+              className="flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium transition-opacity cursor-pointer"
+              style={{
+                borderColor: isActive ? s.color : "#E5E7EB",
+                color: isActive ? s.color : "#9CA3AF",
+                opacity: isActive ? 1 : 0.4,
+              }}
+            >
+              <span className="inline-block size-2 rounded-full shrink-0" style={{ background: isActive ? s.color : "#D1D5DB" }} />
+              {s.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <ResponsiveContainer width="100%" height={280}>
+        <LineChart data={chartData} margin={{ top: 8, right: 24, bottom: 0, left: -8 }}>
+          <CartesianGrid stroke="#F3F4F6" vertical={false} />
+          <ReferenceLine y={3.5} stroke="#9CA3AF" strokeDasharray="4 3" strokeWidth={1}
+            label={{ value: "target 3.5", position: "insideBottomRight", fontSize: 10, fill: "#9CA3AF", offset: 4 }}
           />
+          <XAxis dataKey="pulse" tick={{ fontSize: 12, fill: "#9CA3AF" }} axisLine={false} tickLine={false} dy={6} />
           <YAxis
-            domain={[1.0, 5.0]}
-            ticks={[1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0]}
-            stroke="#94a3b8"
-            tick={{ fill: "#475569", fontSize: 12 }}
-            axisLine={{ stroke: "#cbd5e1" }}
-            label={{
-              value: "Average Score",
-              angle: -90,
-              position: "insideLeft",
-              style: { fill: "#475569", fontSize: 12 },
-            }}
+            domain={[1, 5]}
+            ticks={[1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5]}
+            tick={{ fontSize: 11, fill: "#9CA3AF" }}
+            axisLine={false}
+            tickLine={false}
+            width={34}
           />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: "#fff",
-              border: "1px solid #e2e8f0",
-              borderRadius: "8px",
-              fontSize: "12px",
-            }}
-            formatter={(value: any) => value.toFixed(1)}
-          />
-          <Legend
-            wrapperStyle={{ fontSize: "12px", paddingTop: "10px" }}
-            iconType="line"
-          />
-          
-          {/* Render a line for each area */}
-          {AREA_NAMES.map((area) => (
-            <Line
-              key={area}
-              type="monotone"
-              dataKey={area}
-              stroke={AREA_COLORS[area]}
-              strokeWidth={2}
-              dot={{ r: 4, fill: AREA_COLORS[area] }}
-              activeDot={{ r: 6 }}
-              label={<CustomLabel />}
-            />
-          ))}
+          <Tooltip content={(props) => <CustomTooltip active={props.active} payload={props.payload as unknown as TooltipPayloadItem[]} label={props.label as string} />} cursor={{ stroke: "#E5E7EB", strokeWidth: 1 }} />
+
+          {SERIES.map((s) => {
+            const dimmed = hovered !== null && hovered !== s.key;
+            return (
+              <Line
+                key={s.key}
+                type="monotone"
+                dataKey={s.key}
+                name={s.label}
+                stroke={s.color}
+                strokeWidth={dimmed ? 1 : 2}
+                strokeOpacity={dimmed ? 0.15 : 1}
+                dot={(props: any) => <CustomDot key={`${s.key}-${props.cx}-${props.cy}`} {...props} dataKey={s.key} color={s.color} />}
+                activeDot={(props: any) => <ActiveDot key={`active-${s.key}`} {...props} dataKey={s.key} color={s.color} />}
+              />
+            );
+          })}
         </LineChart>
       </ResponsiveContainer>
+
+      <p className="text-[11px] text-gray-400 -mt-2">
+        Dots in <span className="text-red-400 font-medium">red</span> indicate a score below the 3.5 target. Hover a label above to isolate a series.
+      </p>
     </div>
   );
 }
