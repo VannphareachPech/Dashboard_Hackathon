@@ -97,7 +97,13 @@ export default function ScoreChart({ areaScores }: ScoreChartProps) {
               );
             }}
           />
-          <Bar dataKey="score" radius={[4, 4, 0, 0]} label={{ position: "top", fontSize: 10, fill: "#94a3b8" }}>
+          <Bar dataKey="score" radius={[3, 3, 0, 0]}>
+            <LabelList
+              dataKey="score"
+              position="top"
+              formatter={(v) => (typeof v === "number" ? v.toFixed(1) : String(v ?? ""))}
+              style={{ fontSize: 12, fill: "#475569", fontWeight: 500 }}
+            />
             {data.map((entry) => (
               <Cell key={entry.area} fill={barColor(entry.score)} />
             ))}

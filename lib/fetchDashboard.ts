@@ -1,5 +1,27 @@
 import type { DashboardData, TrendPoint, RoleSplitRow, ResponseCountPoint, ResponseMixRow } from "@/types/dashboard";
 
+const EMPTY_DATA: DashboardData = {
+  cycle: "",
+  generatedDate: "",
+  narrativeSummary: "",
+  summary: {
+    totalResponses: 0,
+    teamSize: undefined,
+    highestArea: "",
+    lowestArea: "",
+    overallStatus: "No Data",
+    overallScore: 0,
+    scoreDelta: undefined,
+  },
+  areaScores: [],
+  trends: [],
+  recommendations: [],
+  actions: [],
+  roleSplit: [],
+  responseCounts: [],
+  responseMix: [],
+};
+
 function normalizeTrendList(raw: unknown): TrendPoint[] {
   if (!Array.isArray(raw)) return [];
 
@@ -159,8 +181,8 @@ export async function fetchDashboardData(): Promise<DashboardData> {
   const isDev = process.env.NODE_ENV !== "production";
 
   if (!url) {
-    // No endpoint configured — return mock data for local dev / preview
-    return MOCK_DATA;
+    // No endpoint configured — return explicit empty state
+    return EMPTY_DATA;
   }
 
   try {
@@ -173,7 +195,7 @@ export async function fetchDashboardData(): Promise<DashboardData> {
 
     if (!res.ok) {
       console.error(`Apps Script fetch failed: ${res.status}`);
-      return MOCK_DATA;
+      return EMPTY_DATA;
     }
 
     const contentType = (res.headers.get("content-type") || "").toLowerCase();
@@ -188,14 +210,14 @@ export async function fetchDashboardData(): Promise<DashboardData> {
           preview: raw.slice(0, 180),
         }
       );
-      return MOCK_DATA;
+      return EMPTY_DATA;
     }
 
     const data = JSON.parse(raw) as Partial<DashboardData>;
 
     // Guard against sparse/invalid trend data from sheet labels/mapping.
     const liveTrends = normalizeTrendList(data.trends);
-    const trends = hasUsablePulseHistory(liveTrends) ? liveTrends : MOCK_DATA.trends;
+    const trends = hasUsablePulseHistory(liveTrends) ? liveTrends : [];
     const latestTrendScore =
       trends.length > 0
         ? Number(trends[trends.length - 1].overallScore) || 0
@@ -204,11 +226,11 @@ export async function fetchDashboardData(): Promise<DashboardData> {
     const resolvedScore = rawScore > 0 ? rawScore : latestTrendScore;
 
     const normalized: DashboardData = {
-      ...MOCK_DATA,
+      ...EMPTY_DATA,
       ...data,
       trends,
       summary: {
-        ...MOCK_DATA.summary,
+        ...EMPTY_DATA.summary,
         ...(data.summary || {}),
         totalResponses: Number((data.summary || {}).totalResponses) || 0,
         overallScore: resolvedScore,
@@ -216,13 +238,13 @@ export async function fetchDashboardData(): Promise<DashboardData> {
       },
       roleSplit: Array.isArray(data.roleSplit) && data.roleSplit.length > 0
         ? data.roleSplit
-        : MOCK_DATA.roleSplit,
+        : [],
       responseCounts: Array.isArray(data.responseCounts) && data.responseCounts.length > 0
         ? data.responseCounts
-        : MOCK_DATA.responseCounts,
+        : [],
       responseMix: Array.isArray(data.responseMix) && data.responseMix.length > 0
         ? data.responseMix
-        : MOCK_DATA.responseMix,
+        : [],
     };
 
     // Compute scoreDelta from trend history when consistent with the resolved score.
@@ -240,6 +262,6 @@ export async function fetchDashboardData(): Promise<DashboardData> {
     return normalized;
   } catch (err) {
     console.error("fetchDashboardData error:", err);
-    return MOCK_DATA;
+    return EMPTY_DATA;
   }
 }
