@@ -36,8 +36,53 @@ function normalizeTrendList(raw: unknown): TrendPoint[] {
 }
 
 function hasUsablePulseHistory(trends: TrendPoint[]): boolean {
-  if (trends.length < 2) return false;
-  return trends.every((t) => !/unknown/i.test(String(t.cycle || "")));
+  return trends.length > 0;
+}
+
+function inferStatusFromScore(score: number): string {
+  if (!isFinite(score) || score <= 0) return "No Data";
+  if (score >= 4.0) return "Strong";
+  if (score >= 3.5) return "Stable";
+  if (score >= 3.0) return "Watch";
+  return "At Risk";
+}
+
+function normalizeRoleSplit(raw: unknown): RoleSplitRow[] {
+  if (!Array.isArray(raw)) return [];
+
+  return raw
+    .map((item) => item as Record<string, unknown>)
+    .map((row) => {
+      const area = String(row.area || "").trim();
+
+      const directScores = row.scores && typeof row.scores === "object"
+        ? Object.entries(row.scores as Record<string, unknown>)
+            .reduce((acc, [k, v]) => {
+              const n = Number(v);
+              if (k && Number.isFinite(n)) acc[k] = n;
+              return acc;
+            }, {} as Record<string, number>)
+        : {};
+
+      // Fallback: some payloads flatten role columns instead of nested scores.
+      const flatScores = Object.entries(row).reduce((acc, [k, v]) => {
+        if (k === "area" || k === "scores" || k === "roleGap") return acc;
+        const n = Number(v);
+        if (k && Number.isFinite(n)) acc[k] = n;
+        return acc;
+      }, {} as Record<string, number>);
+
+      const scores = Object.keys(directScores).length > 0 ? directScores : flatScores;
+      const vals = Object.values(scores);
+
+      const rawGap = Number(row.roleGap);
+      const roleGap = Number.isFinite(rawGap)
+        ? Number(rawGap.toFixed(1))
+        : (vals.length >= 2 ? Number((Math.max(...vals) - Math.min(...vals)).toFixed(1)) : 0);
+
+      return { area, scores, roleGap };
+    })
+    .filter((r) => r.area.length > 0 && Object.keys(r.scores).length > 0);
 }
 
 // ─── Mock data ────────────────────────────────────────────────────────────
@@ -215,6 +260,18 @@ export async function fetchDashboardData(): Promise<DashboardData> {
 
     const data = JSON.parse(raw) as Partial<DashboardData>;
 
+    const areaScores = Array.isArray(data.areaScores)
+      ? data.areaScores
+          .map((a) => ({
+            ...a,
+            area: String(a.area || "").trim(),
+            score: Number(a.score) || 0,
+            delta: a.delta !== undefined ? Number(a.delta) : undefined,
+            pulsesAtRisk: a.pulsesAtRisk !== undefined ? Number(a.pulsesAtRisk) : undefined,
+          }))
+          .filter((a) => a.area.length > 0)
+      : [];
+
     // Guard against sparse/invalid trend data from sheet labels/mapping.
     const liveTrends = normalizeTrendList(data.trends);
     const trends = hasUsablePulseHistory(liveTrends) ? liveTrends : [];
@@ -222,23 +279,38 @@ export async function fetchDashboardData(): Promise<DashboardData> {
       trends.length > 0
         ? Number(trends[trends.length - 1].overallScore) || 0
         : 0;
+    const areaAverageScore = areaScores.length > 0
+      ? areaScores.reduce((sum, a) => sum + (Number(a.score) || 0), 0) / areaScores.length
+      : 0;
     const rawScore = Number((data.summary || {}).overallScore);
-    const resolvedScore = rawScore > 0 ? rawScore : latestTrendScore;
+    const resolvedScore = rawScore > 0
+      ? rawScore
+      : latestTrendScore > 0
+        ? latestTrendScore
+        : areaAverageScore > 0
+          ? Number(areaAverageScore.toFixed(1))
+          : 0;
+
+    const rawStatus = String((data.summary || {}).overallStatus || "").trim();
+    const resolvedStatus =
+      rawStatus && !/^summary\s*insight$/i.test(rawStatus)
+        ? rawStatus
+        : inferStatusFromScore(resolvedScore);
 
     const normalized: DashboardData = {
       ...EMPTY_DATA,
       ...data,
+      areaScores,
       trends,
       summary: {
         ...EMPTY_DATA.summary,
         ...(data.summary || {}),
         totalResponses: Number((data.summary || {}).totalResponses) || 0,
         overallScore: resolvedScore,
+        overallStatus: resolvedStatus,
         teamSize: Number((data.summary || {}).teamSize) || undefined,
       },
-      roleSplit: Array.isArray(data.roleSplit) && data.roleSplit.length > 0
-        ? data.roleSplit
-        : [],
+      roleSplit: normalizeRoleSplit(data.roleSplit),
       responseCounts: Array.isArray(data.responseCounts) && data.responseCounts.length > 0
         ? data.responseCounts
         : [],
