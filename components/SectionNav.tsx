@@ -8,6 +8,7 @@ const SECTIONS = [
   { id: "area-scores",         label: "Scores" },
   { id: "response-mix",        label: "Sentiment" },
   { id: "role-split",          label: "Roles" },
+  { id: "comments-themes",     label: "Themes" },
   { id: "next-steps",          label: "Action Items" },
 ] as const;
 

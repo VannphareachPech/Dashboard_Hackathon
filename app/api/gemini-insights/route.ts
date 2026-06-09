@@ -12,6 +12,23 @@ export interface GeminiInsightsResponse {
   summary: string;
 }
 
+function classifyDelta(delta: unknown) {
+  if (typeof delta !== "number" || !Number.isFinite(delta)) return "unknown";
+  if (delta <= -0.2) return "declining";
+  if (delta >= 0.2) return "improving";
+  if (delta > -0.1 && delta < 0.1) return "stable";
+  return delta < 0 ? "softening" : "rising";
+}
+
+function classifyPriorityBand(score: unknown, pulsesAtRisk: unknown) {
+  const safeScore = typeof score === "number" && Number.isFinite(score) ? score : null;
+  const safeRisk = typeof pulsesAtRisk === "number" && Number.isFinite(pulsesAtRisk) ? pulsesAtRisk : 0;
+
+  if ((safeScore != null && safeScore < 3.5) || safeRisk >= 2) return "critical";
+  if (safeScore != null && safeScore < 4) return "watch";
+  return "strong";
+}
+
 // ── In-memory cache — keyed by cycle label ────────────────────────────────────
 const responseCache = new Map<string, GeminiInsightsResponse>();
 
@@ -31,21 +48,29 @@ export async function POST(req: NextRequest) {
 
   // Minimal prompt to reduce token usage (fewer tokens = less quota consumed)
   const areaLines = (areaScores as any[])
-    .map((a) => `${a.area}:${a.score}${a.delta != null ? `(${a.delta > 0 ? "+" : ""}${a.delta})` : ""}${a.pulsesAtRisk ? `[!${a.pulsesAtRisk}]` : ""}`)
+    .map((area) => {
+      const trend = classifyDelta(area.delta);
+      const band = classifyPriorityBand(area.score, area.pulsesAtRisk);
+      const deltaPart = area.delta != null && Number.isFinite(area.delta)
+        ? `,delta=${area.delta > 0 ? "+" : ""}${area.delta}`
+        : "";
+      const riskPart = area.pulsesAtRisk ? `,riskCount=${area.pulsesAtRisk}` : "";
+      return `${area.area}:score=${area.score}${deltaPart},trend=${trend},band=${band}${riskPart}`;
+    })
     .join(", ");
 
   const trendLine = (trends as any[]).slice(-3).map((t) => `${t.cycle}:${t.overallScore}`).join(", ");
 
   const signalLines = (recommendations as any[]).slice(0, 3)
-    .map((r) => `${r.theme}(${r.frequency}x)`)
+    .map((recommendation) => `${recommendation.theme}(${recommendation.frequency}x${recommendation.areaLink ? `,area=${recommendation.areaLink}` : ""})`)
     .join(", ");
 
-  const prompt = `Team pulse data: cycle=${cycle}, score=${summary.overallScore}/5 (${summary.overallStatus}), n=${summary.totalResponses}, best=${summary.highestArea}, worst=${summary.lowestArea}. Areas: ${areaLines}. Trend: ${trendLine}. Signals: ${signalLines}.
+  const prompt = `Team pulse data: cycle=${cycle}, score=${summary.overallScore}/5 (${summary.overallStatus}), n=${summary.totalResponses}, best=${summary.highestArea}, worst=${summary.lowestArea}. Areas: ${areaLines}. Trend: ${trendLine}. Signals: ${signalLines || "none"}.
 
 Return ONLY this JSON (no markdown):
 {"summary":"<2 sentences>","rows":[{"area":"<name>","insight":"<1 sentence>","recommendation":"<1 sentence>","priority":"<High|Medium|Low>"}]}
 
-One row per area. Priority: High if score<3.5 or pulsesAtRisk>=2, Medium if score<4, else Low.`;
+Rules: mention strongest area and biggest risk in summary. One row per area. If score<3.5 or riskCount>=2 => High. If score<4 => Medium. Else => Low. If trend=declining, describe deterioration. If trend=stable, describe consistency. If trend=improving or rising, describe momentum. Recommendations must be specific and operational, not generic, and should reflect score, trend, or riskCount.`;
 
   try {
     // Use gemini-2.5-flash — works with this project's free tier quota
