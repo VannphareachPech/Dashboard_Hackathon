@@ -61,7 +61,7 @@ export default function ScoreChart({ areaScores }: ScoreChartProps) {
             width={190}
             tick={(props) => (
               <text
-                x={props.x - 185}
+                x={Number(props.x) - 185}
                 y={props.y}
                 dy={4}
                 textAnchor="start"
