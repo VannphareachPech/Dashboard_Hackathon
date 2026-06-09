@@ -16,6 +16,7 @@ import type { SummaryData } from "@/types/dashboard";
 import RoleSplitHeatmap from "@/components/RoleSplitHeatmap";
 import ResponseCountChart from "@/components/ResponseCountChart";
 import ResponseMixChart from "@/components/ResponseMixChart";
+import CurrentPulseBarChart from "@/components/CurrentPulseBarChart";
 
 
 function statusAccent(status: string): "green" | "amber" | "red" | "blue" {
@@ -40,7 +41,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default async function DashboardPage() {
   const data = await fetchDashboardData();
-  const { cycle, generatedDate, narrativeSummary, summary, areaScores, trends, recommendations, actions, responseAllRawData, roleSplit, responseCounts, responseMix } = data;
+  const { cycle, generatedDate, narrativeSummary, summary, areaScores, trends, recommendations, actions, responseAllRawData, responseCurrentRawData, roleSplit, responseCounts, responseMix } = data;
 
   const prevCycle = trends.length >= 2 ? trends[trends.length - 2].cycle : undefined;
 
@@ -127,6 +128,13 @@ export default async function DashboardPage() {
       <Section title="Area Scores">
         <ScoreChart areaScores={areaScores} />
       </Section>
+
+      {/* ── Current Pulse Response Mix (raw data) ─────────── */}
+      {responseCurrentRawData && responseCurrentRawData.length > 0 && (
+        <Section title="Current Pulse Response Mix by Question">
+          <CurrentPulseBarChart responseCurrentRawData={responseCurrentRawData} />
+        </Section>
+      )}
 
       {/* ── Current Pulse Response Mix ─────────────────────── */}
       {responseMix && responseMix.length > 0 && (
