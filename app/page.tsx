@@ -19,6 +19,7 @@ import ResponseMixChart from "@/components/ResponseMixChart";
 import CurrentPulseBarChart from "@/components/CurrentPulseBarChart";
 import OverallResponseMixTrendChart from "@/components/OverallResponseMixTrendChart";
 import ResponseCountByPulseChart from "@/components/ResponseCountByPulseChart";
+import GeminiInsights from "@/components/GeminiInsights";
 
 
 function statusAccent(status: string): "green" | "amber" | "red" | "blue" {
@@ -152,7 +153,7 @@ export default async function DashboardPage() {
       </Section>
 
       {/* ── Charts row ────────────────────────────────── */}
-      <Section title="Survey Results">
+      {/* <Section title="Survey Results">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="lg:col-span-2">
             <ScoreChart areaScores={areaScores} />
@@ -161,7 +162,7 @@ export default async function DashboardPage() {
             <TrendChart trends={trends} />
           </div>
         </div>
-      </Section>
+      </Section> */}
 
       {/* ── Pulse History — full width ──────────────────────── */}
       <Section title="Pulse History">
@@ -189,11 +190,11 @@ export default async function DashboardPage() {
       )}
 
       {/* ── Response Count by Pulse ─────────────────────────── */}
-      {responseCounts && responseCounts.length > 0 && (
+      {/* {responseCounts && responseCounts.length > 0 && (
         <Section title="Participation Trend">
           <ResponseCountChart data={responseCounts} />
         </Section>
-      )}
+      )} */}
 
       {/* ── Recurring Signals ───────────────────────────────── */}
       <Section title="Recurring Signals">
@@ -204,7 +205,16 @@ export default async function DashboardPage() {
       <Section title="Commitments">
         <ActionTracker actions={actions} />
       </Section>
-
+      {/* ── AI Insights (Gemini) ──────────────────────────────── */}
+      <Section title="AI Insights">
+        <GeminiInsights
+          cycle={cycle}
+          summary={summary}
+          areaScores={areaScores}
+          trends={trends}
+          recommendations={recommendations}
+        />
+      </Section>
       {/* ── Footer ──────────────────────────────────────────── */}
       <footer className="text-center text-xs text-slate-300 pt-4 border-t border-slate-100">
         B2CSS Pulse Dashboard · Data sourced from Google Sheets · {cycle}
