@@ -5,6 +5,7 @@ import ScoreChart from "@/components/ScoreChart";
 import TrendChart from "@/components/TrendChart";
 import RecommendationTable from "@/components/RecommendationTable";
 import ActionTracker from "@/components/ActionTracker";
+import PulseQuestionTrendChart from "@/components/PulseQuestionTrendChart";
 import type { SummaryData } from "@/types/dashboard";
 
 // Determine accent colour for the Overall Status card
@@ -39,7 +40,7 @@ function Section({
 
 export default async function DashboardPage() {
   const data = await fetchDashboardData();
-  const { cycle, generatedDate, summary, areaScores, trends, recommendations, actions } = data;
+  const { cycle, generatedDate, summary, areaScores, trends, recommendations, actions, responseAllRawData } = data;
 
   return (
     <main className="max-w-5xl mx-auto px-4 py-10 space-y-10">
@@ -71,6 +72,11 @@ export default async function DashboardPage() {
             accent="amber"
           />
         </div>
+      </Section>
+
+      {/* ── Pulse Question Score Trends ──────────────── */}
+      <Section title="Trends by Survey Area">
+        <PulseQuestionTrendChart responseAllRawData={responseAllRawData ?? []} />
       </Section>
 
       {/* ── Charts row ────────────────────────────────── */}
