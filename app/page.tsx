@@ -13,6 +13,58 @@ import RoleSplitHeatmap from "@/components/RoleSplitHeatmap";
 import ResponseCountChart from "@/components/ResponseCountChart";
 import ResponseMixChart from "@/components/ResponseMixChart";
 import SectionNav from "@/components/SectionNav";
+import type { ActionItem, RecommendationTheme } from "@/types/dashboard";
+
+const NEXT_STEPS_MOCK_RECOMMENDATIONS: RecommendationTheme[] = [
+  {
+    theme: "Role clarity and workload balance",
+    frequency: 14,
+    pulsesActive: 3,
+    suggestedAction: "Publish weekly priority alignment and rebalance high-load teams.",
+    areaLink: "Role Clarity",
+  },
+  {
+    theme: "Manager coaching consistency",
+    frequency: 11,
+    pulsesActive: 2,
+    suggestedAction: "Run bi-weekly manager coaching circles with shared action logs.",
+    areaLink: "Manager Support",
+  },
+  {
+    theme: "Cross-team communication gaps",
+    frequency: 9,
+    pulsesActive: 2,
+    suggestedAction: "Introduce monthly cross-functional retros and publish decision notes.",
+    areaLink: "Communication",
+  },
+];
+
+const NEXT_STEPS_MOCK_ACTIONS: ActionItem[] = [
+  {
+    concern: "Unclear ownership for escalations",
+    suggestedAction: "Define and share escalation ownership matrix by function.",
+    owner: "People Ops",
+    status: "In Progress",
+    pulseOpened: "Jun '26",
+    area: "Role Clarity",
+  },
+  {
+    concern: "Inconsistent check-ins",
+    suggestedAction: "Adopt a weekly 1:1 template for all managers.",
+    owner: "HRBP",
+    status: "Planned",
+    pulseOpened: "Jun '26",
+    area: "Manager Support",
+  },
+  {
+    concern: "Delayed cross-team updates",
+    suggestedAction: "Set a recurring inter-team standup with rotating facilitation.",
+    owner: "Operations Lead",
+    status: "Completed",
+    pulseOpened: "May '26",
+    area: "Communication",
+  },
+];
 
 function statusAccent(status: string): "green" | "amber" | "red" | "blue" {
   const s = status.toLowerCase();
@@ -39,6 +91,8 @@ function GroupDivider() {
 export default async function DashboardPage() {
   const data = await fetchDashboardData();
   const { cycle, generatedDate, narrativeSummary, summary, areaScores, trends, recommendations, actions, roleSplit, responseCounts, responseMix } = data;
+  const nextStepRecommendations = recommendations.length > 0 ? recommendations : NEXT_STEPS_MOCK_RECOMMENDATIONS;
+  const nextStepActions = actions.length > 0 ? actions : NEXT_STEPS_MOCK_ACTIONS;
 
   const prevCycle = trends.length >= 2 ? trends[trends.length - 2].cycle : undefined;
 
@@ -117,7 +171,6 @@ export default async function DashboardPage() {
             <section id="movement" className="scroll-mt-20">
               <SignalStrip areaScores={areaScores} />
             </section>
-
           </section>
 
           {/* ════════════════════════════════════════════════════════
@@ -179,11 +232,11 @@ export default async function DashboardPage() {
             </div>
 
             <div>
-              <RecommendationTable recommendations={recommendations} />
+              <RecommendationTable recommendations={nextStepRecommendations} />
             </div>
 
             <div className="pt-5 mt-5 border-t border-slate-100/80">
-              <ActionTracker actions={actions} />
+              <ActionTracker actions={nextStepActions} />
             </div>
 
           </section>

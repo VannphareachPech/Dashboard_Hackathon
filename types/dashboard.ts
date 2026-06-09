@@ -45,6 +45,10 @@ export interface SummaryData {
   scoreDelta?: number;      // change vs previous cycle, computed from trends
 }
 
+export type ResponseRawData = {
+  [areaName: string]: number | string; // Area name -> score (1-5), "Pulse Cycle" -> label
+};
+
 // Root shape returned by the Apps Script doGet() endpoint
 export interface DashboardData {
   cycle: string;           // e.g. "Jun '26"
@@ -55,6 +59,8 @@ export interface DashboardData {
   trends: TrendPoint[];
   recommendations: RecommendationTheme[];
   actions: ActionItem[];
+  responseCurrentRawData?: ResponseRawData[];
+  responseAllRawData?: ResponseRawData[];
   roleSplit?: RoleSplitRow[];          // per-area scores by role group
   responseCounts?: ResponseCountPoint[]; // response participation per pulse
   responseMix?: ResponseMixRow[];      // per-area positive/mixed/negative share
