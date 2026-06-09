@@ -1,21 +1,5 @@
 import type { AreaScore } from "@/types/dashboard";
 
-const SHORT: Record<string, string> = {
-  "Direction & Priorities":    "Direction",
-  "Value & Focus":             "Value",
-  "Ownership & Empowerment":   "Ownership",
-  "Ways of Working":           "Ways of Working",
-  "Collaboration & Support":   "Collaboration",
-  "Workload & Sustainability": "Workload",
-  "Team Climate & Safety":     "Climate",
-};
-
-function deltaStyle(delta: number) {
-  if (delta > 0)  return { chip: "bg-emerald-50 text-emerald-700", arrow: "↑", sign: "+" };
-  if (delta < 0)  return { chip: "bg-rose-50 text-rose-700",       arrow: "↓", sign: ""  };
-  return          { chip: "bg-slate-100 text-slate-400",           arrow: "→", sign: ""  };
-}
-
 interface SignalStripProps {
   areaScores: AreaScore[];
 }
@@ -24,30 +8,43 @@ export default function SignalStrip({ areaScores }: SignalStripProps) {
   const withDelta = areaScores.filter((a) => a.delta !== undefined);
   if (!withDelta.length) return null;
 
+  // Sort by absolute delta descending so biggest movers appear first
+  const sorted = [...withDelta].sort(
+    (a, b) => Math.abs(b.delta!) - Math.abs(a.delta!)
+  );
+
   return (
-    <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5">
-      <p className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-3">
-        Movement Since Last Pulse
+    <div className="bg-white rounded-xl border border-slate-100 shadow-[0_1px_3px_rgba(0,0,0,0.04)] px-4 py-3">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 mb-2">
+        Area Movement
       </p>
-      <div className="flex flex-wrap gap-2">
-        {withDelta.map((a) => {
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-x-4 gap-y-1.5">
+        {sorted.map((a) => {
           const d = a.delta!;
-          const { chip, arrow, sign } = deltaStyle(d);
+          const isFlat = d === 0;
+          const isUp   = d > 0;
+          const isBig  = Math.abs(d) >= 0.3;
+
           return (
-            <div
-              key={a.area}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50"
-              title={a.area}
-            >
-              <span className="text-xs font-medium text-slate-600">
-                {SHORT[a.area] ?? a.area}
+            <div key={a.area} className="flex items-center justify-between gap-2 min-w-0" title={a.area}>
+              <span className="text-xs font-medium leading-5 text-slate-700">
+                {a.area}
               </span>
-              <span className={`text-xs font-bold tabular-nums px-1.5 py-0.5 rounded ${chip}`}>
-                {arrow} {sign}{Math.abs(d).toFixed(1)}
-              </span>
-              {a.pulsesAtRisk !== undefined && a.pulsesAtRisk >= 2 && (
-                <span className="text-xs text-amber-600 font-medium" title={`${a.pulsesAtRisk} consecutive pulses at Watch or worse`}>
-                  ⚠ {a.pulsesAtRisk}p
+
+              {isFlat ? (
+                <span className="text-xs text-slate-400 font-normal shrink-0">No change</span>
+              ) : (
+                <span
+                  className={[
+                    "text-xs tabular-nums shrink-0",
+                    isUp  && isBig  ? "text-emerald-600 font-semibold" :
+                    isUp  && !isBig ? "text-slate-500 font-medium"     :
+                    !isUp && isBig  ? "text-rose-600 font-semibold"    :
+                                      "text-slate-500 font-medium",
+                  ].join(" ")}
+                >
+                  {isUp ? "↑" : "↓"} {isUp ? "+" : ""}{d.toFixed(1)}
                 </span>
               )}
             </div>

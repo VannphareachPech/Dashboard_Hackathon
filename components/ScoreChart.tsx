@@ -9,6 +9,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   Cell,
+  LabelList,
 } from "recharts";
 import type { AreaScore } from "@/types/dashboard";
 
@@ -16,15 +17,15 @@ interface ScoreChartProps {
   areaScores: AreaScore[];
 }
 
-// Colour each bar based on score value
+// Neutral graduated blue scale: deeper = stronger score.
+// No semantic red/amber/green — board-friendly and emotionally neutral.
 function barColor(score: number): string {
-  if (score >= 4.0) return "#34d399"; // emerald — strong
-  if (score >= 3.5) return "#60a5fa"; // blue — stable
-  if (score >= 3.0) return "#fbbf24"; // amber — watch
-  return "#f87171";                   // red — at risk
+  if (score >= 4.0) return "#4338ca"; // indigo-700 — highest
+  if (score >= 3.5) return "#6366f1"; // indigo-500
+  if (score >= 3.0) return "#818cf8"; // indigo-400
+  return "#a5b4fc";                   // indigo-300 — lowest
 }
 
-// Shorten long area names for X-axis readability
 function shortLabel(area: string): string {
   const map: Record<string, string> = {
     "Direction & Priorities":    "Direction",
@@ -45,77 +46,61 @@ export default function ScoreChart({ areaScores }: ScoreChartProps) {
   }));
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
-      <h2 className="text-base font-semibold text-slate-700 mb-1">
-        Area Scores
+    <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-slate-100 p-5">
+      <h2 className="text-sm font-semibold text-slate-700 mb-1">
+        Pulse Area Scores
       </h2>
-      <p className="text-xs text-slate-400 mb-4">
-        Score out of 5 — colour indicates health
+      <p className="text-xs text-slate-500 mb-3">
+        Score out of 5 across pulse categories
       </p>
 
-      {/* Colour legend */}
-      <div className="flex flex-wrap gap-4 text-xs text-slate-500 mb-4">
-        {[
-          { color: "#34d399", label: "Strong (≥ 4.0)" },
-          { color: "#60a5fa", label: "Stable (≥ 3.5)" },
-          { color: "#fbbf24", label: "Watch (≥ 3.0)" },
-          { color: "#f87171", label: "At Risk (< 3.0)" },
-        ].map(({ color, label }) => (
-          <span key={label} className="flex items-center gap-1.5">
-            <span
-              className="inline-block w-3 h-3 rounded-sm"
-              style={{ backgroundColor: color }}
-            />
-            {label}
-          </span>
-        ))}
-      </div>
-
-      <ResponsiveContainer width="100%" height={280}>
+      <ResponsiveContainer width="100%" height={260}>
         <BarChart
           data={data}
-          margin={{ top: 4, right: 16, left: -8, bottom: 0 }}
-          barCategoryGap="30%"
+          margin={{ top: 20, right: 8, left: -8, bottom: 0 }}
+          barCategoryGap="32%"
         >
-          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+          <CartesianGrid strokeDasharray="2 4" stroke="#f1f5f9" vertical={false} />
           <XAxis
             dataKey="shortArea"
-            tick={{ fontSize: 12, fill: "#94a3b8" }}
+            tick={{ fontSize: 12, fill: "#64748b" }}
             axisLine={false}
             tickLine={false}
           />
           <YAxis
             domain={[0, 5]}
             ticks={[1, 2, 3, 4, 5]}
-            tick={{ fontSize: 11, fill: "#94a3b8" }}
+            tick={{ fontSize: 11, fill: "#cbd5e1" }}
             axisLine={false}
             tickLine={false}
           />
           <Tooltip
-            cursor={{ fill: "#f1f5f9" }}
+            cursor={{ fill: "#f8fafc" }}
             content={({ active, payload }) => {
               if (!active || !payload?.length) return null;
               const d = payload[0].payload as AreaScore & { shortArea: string };
               return (
-                <div className="bg-white border border-slate-200 rounded-lg px-3 py-2 shadow text-sm">
-                  <p className="font-semibold text-slate-700">{d.area}</p>
+                <div className="bg-white border border-slate-200 rounded-lg px-3 py-2 shadow-sm text-xs">
+                  <p className="font-semibold text-slate-700 mb-1">{d.area}</p>
                   <p className="text-slate-500">
-                    Score:{" "}
-                    <span className="font-bold text-slate-900">{d.score.toFixed(1)}</span>
+                    Score: <span className="font-semibold text-slate-800">{d.score.toFixed(1)} / 5</span>
                   </p>
                   {d.delta !== undefined && (
-                    <p className={d.delta > 0 ? "text-emerald-600" : d.delta < 0 ? "text-rose-600" : "text-slate-400"}>
+                    <p className="text-slate-400 mt-0.5">
                       {d.delta > 0 ? `↑ +${d.delta.toFixed(1)}` : d.delta < 0 ? `↓ ${d.delta.toFixed(1)}` : "→ 0.0"}{" vs last pulse"}
                     </p>
-                  )}
-                  {d.pulsesAtRisk !== undefined && d.pulsesAtRisk >= 2 && (
-                    <p className="text-amber-600">⚠ {d.pulsesAtRisk} consecutive pulses at risk</p>
                   )}
                 </div>
               );
             }}
           />
-          <Bar dataKey="score" radius={[4, 4, 0, 0]}>
+          <Bar dataKey="score" radius={[3, 3, 0, 0]}>
+            <LabelList
+              dataKey="score"
+              position="top"
+              formatter={(v: number) => v.toFixed(1)}
+              style={{ fontSize: 12, fill: "#475569", fontWeight: 500 }}
+            />
             {data.map((entry) => (
               <Cell key={entry.area} fill={barColor(entry.score)} />
             ))}

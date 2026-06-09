@@ -4,11 +4,11 @@ interface NarrativeBlockProps {
 
 export default function NarrativeBlock({ text }: NarrativeBlockProps) {
   return (
-    <div className="bg-slate-50 border-l-4 border-blue-300 rounded-r-xl px-5 py-4">
-      <p className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-1">
-        Executive Summary
+    <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-slate-100 px-4 py-3.5">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 mb-1.5">
+        Leadership Readout
       </p>
-      <p className="text-sm text-slate-700 leading-relaxed">{text}</p>
+      <p className="text-sm text-slate-600 leading-relaxed">{text}</p>
     </div>
   );
 }

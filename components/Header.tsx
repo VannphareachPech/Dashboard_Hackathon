@@ -29,35 +29,33 @@ export default function Header({ cycle, generatedDate, totalResponses, teamSize 
   })();
 
   return (
-    <header className="mb-8">
+    <header>
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-brand-500 mb-1">
+          <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-slate-400 mb-1">
             Internal Survey Report
           </p>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">
+          <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900 tracking-tight">
             B2CSS Pulse Dashboard
           </h1>
         </div>
-        <div className="text-right text-sm text-slate-500 space-y-0.5">
+        <div className="text-left sm:text-right text-xs leading-5 text-slate-500 sm:self-end max-w-xl">
           <p>
-            <span className="font-medium text-slate-700">Cycle:</span> {cycle}
-          </p>
-          <p>
-            <span className="font-medium text-slate-700">Generated:</span>{" "}
-            {formatted}
+            <span className="font-medium text-slate-600">Cycle:</span> {cycle}
+            <span className="mx-2 text-slate-300">·</span>
+            <span className="font-medium text-slate-600">Generated:</span> {formatted}
+            {participation && (
+              <>
+                <span className="mx-2 text-slate-300">·</span>
+                <span className="font-medium text-slate-600">Participation:</span> {participation}
+              </>
+            )}
             {isStale && (
               <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
                 <span aria-hidden="true">⚠</span> Data may be outdated
               </span>
             )}
           </p>
-          {participation && (
-            <p>
-              <span className="font-medium text-slate-700">Participation:</span>{" "}
-              {participation}
-            </p>
-          )}
         </div>
       </div>
       <div className="mt-4 h-px bg-slate-200" />
