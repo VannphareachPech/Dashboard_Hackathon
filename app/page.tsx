@@ -104,24 +104,52 @@ export default async function DashboardPage() {
         </div>
       </Section>
 
-      {/* ── Pulse Question Score Trends ──────────────── */}
-      <Section title="Trends by Survey Area">
-        <PulseQuestionTrendChart responseAllRawData={responseAllRawData ?? []} />
+      {/* ── Charts Grid: 2×2 layout ───────────────────────── */}
+      <Section title="Pulse Analytics">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* 2. Pulse Question Score Trends */}
+          <div>
+            <p className="text-sm font-semibold text-slate-600 mb-2">2. Pulse Question Score Trends</p>
+            <PulseQuestionTrendChart responseAllRawData={responseAllRawData ?? []} />
+          </div>
+
+          {/* 3. Current Response Mix by Question */}
+          <div>
+            <p className="text-sm font-semibold text-slate-600 mb-2">3. Current Response Mix by Question</p>
+            {responseCurrentRawData && responseCurrentRawData.length > 0 ? (
+              <CurrentPulseBarChart responseCurrentRawData={responseCurrentRawData} />
+            ) : (
+              <div className="rounded-lg border border-slate-200 bg-white p-6 h-full flex items-center justify-center">
+                <p className="text-sm text-slate-400">No current pulse data available</p>
+              </div>
+            )}
+          </div>
+
+          {/* 4. Response Count by Pulse */}
+          <div>
+            <p className="text-sm font-semibold text-slate-600 mb-2">4. Response Count by Pulse</p>
+            {responseAllRawData && responseAllRawData.length > 0 ? (
+              <ResponseCountByPulseChart responseAllRawData={responseAllRawData} />
+            ) : (
+              <div className="rounded-lg border border-slate-200 bg-white p-6 h-full flex items-center justify-center">
+                <p className="text-sm text-slate-400">No response data available</p>
+              </div>
+            )}
+          </div>
+
+          {/* 5. Overall Response Mix Trend */}
+          <div>
+            <p className="text-sm font-semibold text-slate-600 mb-2">5. Overall Response Mix — Last 5 Pulses</p>
+            {responseAllRawData && responseAllRawData.length > 0 ? (
+              <OverallResponseMixTrendChart responseAllRawData={responseAllRawData} />
+            ) : (
+              <div className="rounded-lg border border-slate-200 bg-white p-6 h-full flex items-center justify-center">
+                <p className="text-sm text-slate-400">No response data available</p>
+              </div>
+            )}
+          </div>
+        </div>
       </Section>
-
-      {/* ── Overall Response Mix Trend ─────────────────── */}
-      {responseAllRawData && responseAllRawData.length > 0 && (
-        <Section title="Overall Response Mix Trend">
-          <OverallResponseMixTrendChart responseAllRawData={responseAllRawData} />
-        </Section>
-      )}
-
-      {/* ── Response Count by Pulse ─────────────────────── */}
-      {responseAllRawData && responseAllRawData.length > 0 && (
-        <Section title="Response Count by Pulse">
-          <ResponseCountByPulseChart responseAllRawData={responseAllRawData} />
-        </Section>
-      )}
 
       {/* ── Charts row ────────────────────────────────── */}
       <Section title="Survey Results">
@@ -145,12 +173,6 @@ export default async function DashboardPage() {
         <ScoreChart areaScores={areaScores} />
       </Section>
 
-      {/* ── Current Pulse Response Mix (raw data) ─────────── */}
-      {responseCurrentRawData && responseCurrentRawData.length > 0 && (
-        <Section title="Current Pulse Response Mix by Question">
-          <CurrentPulseBarChart responseCurrentRawData={responseCurrentRawData} />
-        </Section>
-      )}
 
       {/* ── Current Pulse Response Mix ─────────────────────── */}
       {responseMix && responseMix.length > 0 && (
