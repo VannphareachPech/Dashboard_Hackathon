@@ -110,7 +110,7 @@ export default function CurrentPulseBarChart({ responseCurrentRawData }: Props) 
       <ResponsiveContainer width="100%" height={420}>
         <BarChart
           data={chartData}
-          margin={{ top: 20, right: 30, left: 10, bottom: 60 }}
+          margin={{ top: 20, right: 30, left: 10, bottom: 80 }}
         >
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
           <XAxis
@@ -120,12 +120,8 @@ export default function CurrentPulseBarChart({ responseCurrentRawData }: Props) 
             axisLine={{ stroke: "#cbd5e1" }}
             tickLine={false}
             interval={0}
-            width={60}
-            angle={0}
-            tickFormatter={(v: string) => {
-              // Wrap long labels by replacing " & " and spaces for display
-              return v;
-            }}
+            angle={-45}
+            textAnchor="end"
           />
           <YAxis
             domain={[0, 100]}
