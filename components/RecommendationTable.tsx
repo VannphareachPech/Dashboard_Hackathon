@@ -20,13 +20,6 @@ export default function RecommendationTable({
 
   return (
     <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-slate-100 p-5">
-      <div className="mb-4">
-        <h2 className="text-sm font-semibold text-slate-700">Emerging Themes</h2>
-        <p className="text-xs text-slate-500 mt-0.5">
-          Themes repeatedly raised across pulse feedback over time
-        </p>
-      </div>
-
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>

@@ -35,9 +35,9 @@ export default function ResponseMixChart({ data }: Props) {
       {/* ── Header ─────────────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-3 mb-3">
         <div>
-          <h3 className="text-sm font-semibold text-slate-700">Team Sentiment by Area</h3>
+          <h3 className="text-lg font-semibold text-slate-700">Sentiment Breakdown by Area</h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            Positive, mixed, and negative sentiment across pulse areas · Based on {sampleN} responses
+            Share of positive, mixed, and negative responses per engagement driver · Based on {sampleN} responses
           </p>
         </div>
 
@@ -57,37 +57,57 @@ export default function ResponseMixChart({ data }: Props) {
       </div>
 
       {/* ── Rows ───────────────────────────────────────────────── */}
-      <div className="space-y-2">
+      <div className="space-y-3">
         {sorted.map((row) => {
           const level = getSentiment(row.positive);
           const cfg   = SENTIMENT_CONFIG[level];
 
+          const primaryKey =
+            level === "strong" ? "positive" : level === "watch" ? "mixed" : "negative";
+
+          const displayValue =
+            level === "strong"
+              ? row.positive
+              : level === "watch"
+              ? row.mixed
+              : row.negative;
+
+          const secondary = [
+            { key: "positive", value: row.positive, label: "Pos" },
+            { key: "mixed", value: row.mixed, label: "Mix" },
+            { key: "negative", value: row.negative, label: "Neg" },
+          ]
+            .filter((item) => item.key !== primaryKey && item.value > 0)
+            .sort((a, b) => b.value - a.value)[0];
+
           return (
             <div
               key={row.area}
-              className="group rounded-md px-2 py-1.5 -mx-2 hover:bg-slate-50 transition-colors duration-100"
+              className="group rounded-md px-2 py-2.5 -mx-2 hover:bg-slate-50 transition-colors duration-100"
             >
               {/* Area name + stats row */}
               <div className="flex items-center justify-between gap-2 mb-1">
-                <span className="text-xs text-slate-600 font-medium truncate">{row.area}</span>
+                <span className="text-sm text-slate-600 font-medium truncate">{row.area}</span>
                 <div className="flex items-center gap-2 shrink-0">
-                  {/* Inline mixed / negative — visible on hover or when notable */}
-                  <span className="text-[11px] text-slate-500 tabular-nums hidden group-hover:inline">
-                    {row.mixed}% · {row.negative}%
-                  </span>
+                  {/* Inline secondary metric (dynamic by dominant status), hover-only. */}
+                  {secondary && (
+                    <span className="text-[11px] text-slate-500 tabular-nums hidden group-hover:inline">
+                      {secondary.label} {secondary.value}%
+                    </span>
+                  )}
                   <span
                     className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[11px] font-medium ring-1 ring-inset ${cfg.pill}`}
                   >
                     {cfg.label}
                   </span>
                   <span className={`text-xs font-semibold tabular-nums w-8 text-right ${cfg.badge}`}>
-                    {row.positive}%
+                    {displayValue}%
                   </span>
                 </div>
               </div>
 
               {/* Thin 3-segment bar */}
-              <div className="h-1.5 w-full rounded-full overflow-hidden flex bg-slate-100">
+              <div className="h-2.5 w-full rounded-full overflow-hidden flex bg-slate-100">
                 {row.positive > 0 && (
                   <div
                     className="h-full bg-emerald-300 transition-all duration-300"

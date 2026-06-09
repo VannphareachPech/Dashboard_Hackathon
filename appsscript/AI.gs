@@ -9,6 +9,11 @@ function readScoreRows() {
     .getRange(PULSE_CONFIG.SCORE_DATA_START_ROW, PULSE_CONFIG.AREA_COL, rowCount, PULSE_CONFIG.STATUS_COL)
     .getDisplayValues();
 
+  // Only keep rows whose area name is a canonical survey area — this prevents
+  // metadata rows ("Lowest Area", "Total Responses", etc.) from polluting the
+  // Slack message, AI prompt, and Leadership Summary tab.
+  var validAreas = (typeof AREA_NAMES !== "undefined" && AREA_NAMES.length) ? AREA_NAMES : null;
+
   return values
     .map(function(row) {
       const area = safeText_(row[0]);
@@ -16,7 +21,11 @@ function readScoreRows() {
       const status = normalizeStatus_(row[2]) || inferStatusFromScore_(score);
       return { area: area, score: score, status: status };
     })
-    .filter(function(item) { return item.area !== ""; });
+    .filter(function(item) {
+      if (!item.area) return false;
+      if (validAreas) return validAreas.indexOf(item.area) !== -1;
+      return true;
+    });
 }
 
 function readKeyMetrics() {
@@ -43,9 +52,32 @@ function readKeyMetrics() {
     }
   });
 
-  if (!result.totalResponses) {
-    const formSheet = ss.getSheetByName("Form Responses 1");
-    if (formSheet && formSheet.getLastRow() > 1) {
+  // Always re-derive totalResponses by counting Form Responses rows for the
+  // active cycle only — the Summary sheet value is an all-time total and will
+  // be wrong for any pulse after the first.
+  const settings = readSettings();
+  const formSheetName = settings.formSheetName || PULSE_CONFIG.FORM_RESPONSE_SHEET;
+  const formSheet = ss.getSheetByName(formSheetName);
+  if (formSheet && formSheet.getLastRow() > 1) {
+    const formValues = formSheet.getDataRange().getValues();
+    const formHeaders = formValues[0];
+
+    // Find the Pulse Cycle column
+    var cycleCol = -1;
+    for (var fc = 0; fc < formHeaders.length; fc++) {
+      const hn = safeText_(formHeaders[fc]).toLowerCase().replace(/[^a-z0-9]/g, "");
+      if (hn === "pulsecycle" || hn === "cycle") { cycleCol = fc; break; }
+    }
+
+    if (cycleCol >= 0 && settings.currentCycle) {
+      // Count only rows matching the active cycle
+      var cycleCount = 0;
+      for (var fr = 1; fr < formValues.length; fr++) {
+        if (safeText_(formValues[fr][cycleCol]) === settings.currentCycle) cycleCount++;
+      }
+      if (cycleCount > 0) result.totalResponses = String(cycleCount);
+    } else if (!result.totalResponses) {
+      // Fallback: no cycle column — use full row count
       result.totalResponses = String(formSheet.getLastRow() - 1);
     }
   }

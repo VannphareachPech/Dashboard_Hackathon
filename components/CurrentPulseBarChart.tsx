@@ -140,7 +140,7 @@ export default function CurrentPulseBarChart({ responseCurrentRawData }: Props) 
             }}
           />
           <Tooltip
-            formatter={(value: number, name: string) => [`${value}%`, name]}
+            formatter={(value, name) => [`${Number(value ?? 0)}%`, String(name)]}
             contentStyle={{
               backgroundColor: "#fff",
               border: "1px solid #e2e8f0",

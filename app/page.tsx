@@ -18,6 +18,9 @@ import ResponseCountByPulseChart from "@/components/ResponseCountByPulseChart";
 import GeminiInsights from "@/components/GeminiInsights";
 import SectionNav from "@/components/SectionNav";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 function statusAccent(status: string): "green" | "amber" | "red" | "blue" {
   const s = status.toLowerCase();
   if (s === "strong") return "green";
@@ -30,7 +33,7 @@ function statusAccent(status: string): "green" | "amber" | "red" | "blue" {
 function Section({ title, id, children }: { title: string; id?: string; children: React.ReactNode }) {
   return (
     <section id={id} className="space-y-2.5 scroll-mt-20">
-      <h2 className="text-base font-semibold tracking-tight text-slate-800">{title}</h2>
+      <h2 className="text-xl font-semibold tracking-tight text-slate-800">{title}</h2>
       {children}
     </section>
   );
@@ -72,22 +75,32 @@ export default async function DashboardPage() {
     responseAllRawData,
     responseCurrentRawData,
     roleSplit,
+    responseCounts,
     responseMix,
+    prevCycle,
+    focusSuggestion,
   } = data;
 
-  const prevCycle = trends.length >= 2 ? trends[trends.length - 2].cycle : undefined;
+  const currentCycleCount =
+    responseCounts?.find((r) => r.cycle === cycle)?.responseCount ?? summary.totalResponses;
 
   const lowestAreaData = areaScores.find((a) => a.area === summary.lowestArea);
-  const lowestScore = lowestAreaData?.score ?? 0;
-  const lowestPulsesAtRisk = lowestAreaData?.pulsesAtRisk;
+  const focusScore = lowestAreaData?.score ?? 0;
+  const focusPulsesAtRisk = lowestAreaData?.pulsesAtRisk;
 
-  const focusSuggestion =
-    recommendations.find((r) => r.areaLink === summary.lowestArea)?.suggestedAction ??
-    recommendations.find(
-      (r) =>
-        summary.lowestArea &&
-        r.theme.toLowerCase().includes(summary.lowestArea.split(" ")[0].toLowerCase())
-    )?.suggestedAction;
+  const rankedAreas = [...areaScores].sort((a, b) => a.score - b.score);
+  const focusRank = rankedAreas.findIndex((a) => a.area === summary.lowestArea) + 1;
+
+  const gapFromOverall =
+    focusScore > 0 && summary.overallScore > 0
+      ? Math.round((focusScore - summary.overallScore) * 10) / 10
+      : undefined;
+
+  const previousFocusScore = (() => {
+    if (!summary.lowestArea || trends.length < 2) return undefined;
+    const prev = Number(trends[trends.length - 2][summary.lowestArea]);
+    return Number.isNaN(prev) ? undefined : prev;
+  })();
 
   return (
     <>
@@ -101,8 +114,9 @@ export default async function DashboardPage() {
             <Header
               cycle={cycle}
               generatedDate={generatedDate}
-              totalResponses={summary.totalResponses}
+              totalResponses={currentCycleCount}
               teamSize={summary.teamSize}
+              participationTextOverride={process.env.DEMO_PARTICIPATION_TEXT}
             />
 
             <HeroScore summary={summary} prevCycle={prevCycle} />
@@ -133,8 +147,12 @@ export default async function DashboardPage() {
               <section id="focus" className="scroll-mt-20">
                 <FocusArea
                   area={summary.lowestArea}
-                  score={lowestScore}
-                  pulsesAtRisk={lowestPulsesAtRisk}
+                  score={focusScore}
+                  pulsesAtRisk={focusPulsesAtRisk}
+                  areaRank={focusRank > 0 ? focusRank : undefined}
+                  totalAreas={areaScores.length || undefined}
+                  gapFromOverall={gapFromOverall}
+                  previousScore={previousFocusScore}
                   suggestedAction={focusSuggestion}
                 />
               </section>
@@ -155,7 +173,7 @@ export default async function DashboardPage() {
                   <p className="text-sm font-semibold text-slate-600 mb-2">
                     Pulse Question Score Trends
                   </p>
-                  <PulseQuestionTrendChart responseAllRawData={responseAllRawData ?? []} />
+                  <PulseQuestionTrendChart trends={trends} />
                 </div>
 
                 <div>
@@ -229,7 +247,7 @@ export default async function DashboardPage() {
 
           {/* ── GROUP 4 — Leadership Actions ────────────────────── */}
           <GroupDivider />
-          <section id="next-steps" className="mt-5 space-y-0 scroll-mt-20">
+          <section id="next-steps" className="mt-5 scroll-mt-20 space-y-0">
             <div className="mb-4">
               <h2 className="text-base font-semibold tracking-tight text-slate-800">Next Steps</h2>
               <p className="text-xs text-slate-500 mt-0.5">

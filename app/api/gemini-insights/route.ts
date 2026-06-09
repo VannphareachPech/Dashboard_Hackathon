@@ -12,6 +12,23 @@ export interface GeminiInsightsResponse {
   summary: string;
 }
 
+function classifyDelta(delta: unknown) {
+  if (typeof delta !== "number" || !Number.isFinite(delta)) return "unknown";
+  if (delta <= -0.2) return "declining";
+  if (delta >= 0.2) return "improving";
+  if (delta > -0.1 && delta < 0.1) return "stable";
+  return delta < 0 ? "softening" : "rising";
+}
+
+function classifyPriorityBand(score: unknown, pulsesAtRisk: unknown) {
+  const safeScore = typeof score === "number" && Number.isFinite(score) ? score : null;
+  const safeRisk = typeof pulsesAtRisk === "number" && Number.isFinite(pulsesAtRisk) ? pulsesAtRisk : 0;
+
+  if ((safeScore != null && safeScore < 3.5) || safeRisk >= 2) return "critical";
+  if (safeScore != null && safeScore < 4) return "watch";
+  return "strong";
+}
+
 // ── In-memory cache — keyed by cycle label ────────────────────────────────────
 const responseCache = new Map<string, GeminiInsightsResponse>();
 
@@ -31,21 +48,29 @@ export async function POST(req: NextRequest) {
 
   // Minimal prompt to reduce token usage (fewer tokens = less quota consumed)
   const areaLines = (areaScores as any[])
-    .map((a) => `${a.area}:${a.score}${a.delta != null ? `(${a.delta > 0 ? "+" : ""}${a.delta})` : ""}${a.pulsesAtRisk ? `[!${a.pulsesAtRisk}]` : ""}`)
+    .map((area) => {
+      const trend = classifyDelta(area.delta);
+      const band = classifyPriorityBand(area.score, area.pulsesAtRisk);
+      const deltaPart = area.delta != null && Number.isFinite(area.delta)
+        ? `,delta=${area.delta > 0 ? "+" : ""}${area.delta}`
+        : "";
+      const riskPart = area.pulsesAtRisk ? `,riskCount=${area.pulsesAtRisk}` : "";
+      return `${area.area}:score=${area.score}${deltaPart},trend=${trend},band=${band}${riskPart}`;
+    })
     .join(", ");
 
   const trendLine = (trends as any[]).slice(-3).map((t) => `${t.cycle}:${t.overallScore}`).join(", ");
 
   const signalLines = (recommendations as any[]).slice(0, 3)
-    .map((r) => `${r.theme}(${r.frequency}x)`)
+    .map((recommendation) => `${recommendation.theme}(${recommendation.frequency}x${recommendation.areaLink ? `,area=${recommendation.areaLink}` : ""})`)
     .join(", ");
 
-  const prompt = `Team pulse data: cycle=${cycle}, score=${summary.overallScore}/5 (${summary.overallStatus}), n=${summary.totalResponses}, best=${summary.highestArea}, worst=${summary.lowestArea}. Areas: ${areaLines}. Trend: ${trendLine}. Signals: ${signalLines}.
+  const prompt = `Team pulse data: cycle=${cycle}, score=${summary.overallScore}/5 (${summary.overallStatus}), n=${summary.totalResponses}, best=${summary.highestArea}, worst=${summary.lowestArea}. Areas: ${areaLines}. Trend: ${trendLine}. Signals: ${signalLines || "none"}.
 
 Return ONLY this JSON (no markdown):
 {"summary":"<2 sentences>","rows":[{"area":"<name>","insight":"<1 sentence>","recommendation":"<1 sentence>","priority":"<High|Medium|Low>"}]}
 
-One row per area. Priority: High if score<3.5 or pulsesAtRisk>=2, Medium if score<4, else Low.`;
+Rules: mention strongest area and biggest risk in summary. One row per area. If score<3.5 or riskCount>=2 => High. If score<4 => Medium. Else => Low. If trend=declining, describe deterioration. If trend=stable, describe consistency. If trend=improving or rising, describe momentum. Recommendations must be specific and operational, not generic, and should reflect score, trend, or riskCount.`;
 
   try {
     // Use gemini-2.5-flash — works with this project's free tier quota
@@ -61,7 +86,7 @@ One row per area. Priority: High if score<3.5 or pulsesAtRisk>=2, Medium if scor
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {
               temperature: 0.1,
-              maxOutputTokens: 2048,
+              maxOutputTokens: 4096,
               topP: 0.8,
             },
           }),
@@ -106,7 +131,27 @@ One row per area. Priority: High if score<3.5 or pulsesAtRisk>=2, Medium if scor
     }
 
     const geminiData = await geminiRes.json();
-    const rawText: string = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+
+    // Log full response in dev to diagnose format issues
+    console.log("[gemini-insights] raw response:", JSON.stringify(geminiData).slice(0, 600));
+
+    const candidate = geminiData?.candidates?.[0];
+    const finishReason: string = candidate?.finishReason ?? "";
+
+    // Handle safety blocks or empty candidates
+    if (!candidate || finishReason === "SAFETY" || finishReason === "BLOCKED") {
+      console.error("[gemini-insights] Blocked or empty candidate:", finishReason);
+      return NextResponse.json({ error: "Gemini blocked the response. Try again." }, { status: 502 });
+    }
+
+    // gemini-2.5-flash uses a "thought" part + final text part; grab last non-empty text part
+    const parts: Array<{ text?: string }> = candidate?.content?.parts ?? [];
+    const rawText: string = [...parts].reverse().find((p) => p.text?.trim())?.text ?? "";
+
+    if (!rawText) {
+      console.error("[gemini-insights] Empty text in candidate. finishReason:", finishReason, "parts:", JSON.stringify(parts).slice(0, 200));
+      return NextResponse.json({ error: "Gemini returned an empty response. Please try again." }, { status: 502 });
+    }
 
     // Strip markdown fences
     const cleaned = rawText.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
@@ -114,7 +159,7 @@ One row per area. Priority: High if score<3.5 or pulsesAtRisk>=2, Medium if scor
     // Extract the JSON object even if the model added extra text around it
     const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      console.error("[gemini-insights] No JSON object found in response:", cleaned.slice(0, 200));
+      console.error("[gemini-insights] No JSON object found in response:", cleaned.slice(0, 400));
       return NextResponse.json({ error: "Gemini returned an unexpected format. Please try again." }, { status: 502 });
     }
 

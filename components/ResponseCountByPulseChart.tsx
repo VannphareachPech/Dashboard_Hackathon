@@ -94,7 +94,7 @@ export default function ResponseCountByPulseChart({ responseAllRawData }: Props)
             }}
           />
           <Tooltip
-            formatter={(value: number) => [value, "Responses"]}
+            formatter={(value) => [Number(value ?? 0), "Responses"]}
             contentStyle={{
               backgroundColor: "#fff",
               border: "1px solid #e2e8f0",

@@ -1,4 +1,4 @@
-import type { DashboardData, TrendPoint, RoleSplitRow, ResponseCountPoint, ResponseMixRow } from "@/types/dashboard";
+import type { DashboardData, TrendPoint } from "@/types/dashboard";
 
 function normalizeTrendList(raw: unknown): TrendPoint[] {
   if (!Array.isArray(raw)) return [];
@@ -18,27 +18,16 @@ function hasUsablePulseHistory(trends: TrendPoint[]): boolean {
   return trends.every((t) => !/unknown/i.test(String(t.cycle || "")));
 }
 
-
-
-// ─── Fetch ────────────────────────────────────────────────────────────────
-// Set APPS_SCRIPT_URL in your .env.local (never expose in client bundle):
-//   APPS_SCRIPT_URL=https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec
-//
-// This function runs server-side only (Next.js Server Component).
-
 export async function fetchDashboardData(): Promise<DashboardData | null> {
   const url = process.env.APPS_SCRIPT_URL;
   const isDev = process.env.NODE_ENV !== "production";
 
   if (!url) {
-    // No endpoint configured — return null (no data available)
     return null;
   }
 
   try {
     const res = await fetch(url, {
-      // In dev, always fetch fresh data so sheet changes appear immediately.
-      // In prod, keep a 1-hour cache to reduce App Script calls.
       cache: isDev ? "no-store" : "force-cache",
       next: isDev ? undefined : { revalidate: 3600 },
     });
@@ -51,7 +40,6 @@ export async function fetchDashboardData(): Promise<DashboardData | null> {
     const contentType = (res.headers.get("content-type") || "").toLowerCase();
     const raw = await res.text();
 
-    // Apps Script often returns HTML for permission/login/deployment issues.
     if (!raw.trim().startsWith("{") && !raw.trim().startsWith("[")) {
       console.error(
         "Apps Script did not return JSON. Check deployment access (Anyone with the link) and endpoint URL.",
@@ -65,7 +53,6 @@ export async function fetchDashboardData(): Promise<DashboardData | null> {
 
     const data = JSON.parse(raw) as Partial<DashboardData>;
 
-    // Guard against sparse/invalid trend data from sheet labels/mapping.
     const liveTrends = normalizeTrendList(data.trends);
     const trends = hasUsablePulseHistory(liveTrends) ? liveTrends : [];
     const latestTrendScore =
@@ -75,14 +62,13 @@ export async function fetchDashboardData(): Promise<DashboardData | null> {
     const rawScore = Number((data.summary || {}).overallScore);
     const resolvedScore = rawScore > 0 ? rawScore : latestTrendScore;
 
-    // Return null if no valid data
     if (!data.summary || !Array.isArray(data.areaScores) || data.areaScores.length === 0) {
       return null;
     }
 
     const normalized: DashboardData = {
       cycle: String(data.cycle || "").trim() || "Unknown",
-      generatedDate: String(data.generatedDate || "").trim() || new Date().toISOString().split('T')[0],
+      generatedDate: String(data.generatedDate || "").trim() || new Date().toISOString().split("T")[0],
       narrativeSummary: data.narrativeSummary,
       summary: {
         totalResponses: Number((data.summary || {}).totalResponses) || 0,
@@ -113,7 +99,6 @@ export async function fetchDashboardData(): Promise<DashboardData | null> {
         : undefined,
     };
 
-    // Compute scoreDelta from trend history when consistent with the resolved score.
     const trendList = normalized.trends;
     const latest = trendList.length > 0 ? Number(trendList[trendList.length - 1].overallScore) : 0;
     if (trendList.length >= 2 && Math.abs(normalized.summary.overallScore - latest) <= 0.3) {
