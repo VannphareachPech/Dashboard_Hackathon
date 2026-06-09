@@ -1,16 +1,24 @@
 "use client";
-import { AlertTriangle } from "lucide-react";
 import type { RoleSplitRow } from "@/types/dashboard";
 
 interface Props {
   rows: RoleSplitRow[];
 }
 
-function scoreColor(score: number): string {
-  if (score >= 4.0) return "text-[var(--status-strong)]";
-  if (score >= 3.5) return "text-[var(--status-stable)]";
-  if (score >= 3.0) return "text-[var(--status-watch)]";
-  return "text-[var(--status-concern)]";
+// Pill color classes: bg + text + hover ring
+function pillColor(score: number): string {
+  if (score >= 4.0) return "bg-emerald-50 text-emerald-700 ring-emerald-200 group-hover:bg-emerald-100 group-hover:ring-emerald-300";
+  if (score >= 3.5) return "bg-sky-50 text-sky-700 ring-sky-200 group-hover:bg-sky-100 group-hover:ring-sky-300";
+  if (score >= 3.0) return "bg-amber-50 text-amber-700 ring-amber-200 group-hover:bg-amber-100 group-hover:ring-amber-300";
+  return "bg-rose-50 text-rose-700 ring-rose-300 group-hover:bg-rose-100 group-hover:ring-rose-400";
+}
+
+// Role gap column emphasis — escalating weight and color
+function gapStyle(gap: number): string {
+  if (gap >= 0.7) return "text-amber-700 font-bold";
+  if (gap >= 0.6) return "text-amber-600 font-bold";
+  if (gap >= 0.4) return "text-slate-600 font-bold";
+  return "text-slate-500 font-bold";
 }
 
 export default function RoleSplitHeatmap({ rows }: Props) {
@@ -18,76 +26,90 @@ export default function RoleSplitHeatmap({ rows }: Props) {
 
   const groups = Object.keys(rows[0].scores);
 
-  return (
-    <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-slate-100/60 overflow-hidden">
+  function groupWidthClass(group: string): string {
+    if (group === "Product Management" || group === "Product Development") return "w-44";
+    if (group === "Shared") return "w-36";
+    return "w-40";
+  }
 
-      {/* Header */}
-      <div className="px-5 py-3.5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+  return (
+    <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.06)] border border-slate-100 overflow-hidden">
+
+      {/* ── Header + inline legend ──────────────────────────────── */}
+      <div className="px-6 py-4 border-b border-slate-200/70 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2.5">
         <div>
-          <h3 className="text-sm font-semibold text-slate-700">Role Split Comparison</h3>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Larger gaps indicate differing team experiences across roles
+          <h3 className="text-lg font-semibold text-slate-700">Score by Role Group</h3>
+          <p className="text-xs text-slate-500 mt-0.5">
+            How scores differ across role groups — larger gaps signal uneven team experiences.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-3 text-[10px] text-slate-400 shrink-0 sm:pt-0.5">
+        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 shrink-0 sm:pt-1">
           {[
-            { label: "Strong",  color: "var(--status-strong)"  },
-            { label: "Stable",  color: "var(--status-stable)"  },
-            { label: "Watch",   color: "var(--status-watch)"   },
-            { label: "At Risk", color: "var(--status-concern)" },
-          ].map(({ label, color }) => (
-            <span key={label} className="flex items-center gap-1">
-              <span className="size-1.5 rounded-full inline-block" style={{ background: color }} />
+            { swatch: "bg-emerald-100", label: "Strong" },
+            { swatch: "bg-sky-100",     label: "Stable" },
+            { swatch: "bg-amber-100",   label: "Watch"  },
+            { swatch: "bg-rose-100",    label: "At Risk" },
+          ].map(({ swatch, label }) => (
+            <span key={label} className="flex items-center gap-1.5">
+              <span className={`w-2.5 h-2.5 rounded-sm ${swatch} inline-block`} />
               {label}
             </span>
           ))}
         </div>
       </div>
 
-      {/* Table */}
+      {/* ── Table ───────────────────────────────────────────────── */}
       <div className="overflow-x-auto">
-        <table className="w-full text-xs">
+        <table className="w-full table-fixed text-base">
+          <colgroup>
+            <col className="w-72" />
+            {groups.map((g) => (
+              <col key={`col-${g}`} className={groupWidthClass(g)} />
+            ))}
+            <col className="w-32" />
+          </colgroup>
           <thead>
-            <tr className="border-b border-slate-100">
-              <th className="px-5 py-2 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+            <tr className="bg-slate-50 border-b border-slate-200/70">
+              <th className="text-left px-6 py-3 text-sm font-semibold text-slate-600 w-72">
                 Pulse Area
               </th>
               {groups.map((g) => (
-                <th key={g} className="px-4 py-2 text-center text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                <th
+                  key={g}
+                  className={`px-4 py-3 text-sm font-semibold text-slate-600 text-center whitespace-nowrap ${groupWidthClass(g)}`}
+                >
                   {g}
                 </th>
               ))}
-              <th className="px-4 py-2 text-center text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+              <th className="px-4 py-3 text-sm font-semibold text-slate-700 text-center bg-slate-100/80 whitespace-nowrap w-32">
                 Role Gap
               </th>
             </tr>
           </thead>
-          <tbody>
-            {rows.map((row, i) => (
-              <tr
-                key={row.area}
-                className={[
-                  "border-b border-slate-100/60 hover:bg-slate-50/30 transition-colors",
-                  i % 2 !== 0 ? "bg-slate-50/40" : "",
-                ].join(" ")}
-              >
-                <td className="px-5 py-2.5 font-medium text-slate-700">{row.area}</td>
+          <tbody className="divide-y divide-slate-100">
+            {rows.map((row) => (
+              <tr key={row.area} className="group hover:bg-slate-50/40 transition-colors duration-100">
+                <td className="px-6 py-3.5 text-slate-700 text-sm font-medium leading-snug">{row.area}</td>
                 {groups.map((g) => {
                   const score = row.scores[g];
                   return (
-                    <td key={g} className={`px-4 py-2.5 text-center font-semibold tabular-nums ${scoreColor(score)}`}>
-                      {score !== undefined ? score.toFixed(1) : "—"}
+                    <td
+                      key={g}
+                      className="px-4 py-3 text-center"
+                    >
+                      <span
+                        className={`inline-flex items-center justify-center w-14 py-1.5 rounded-full text-sm font-semibold tabular-nums ring-1 transition-all duration-150 cursor-default select-none group-hover:ring-2 ${pillColor(score)}`}
+                      >
+                        {score !== undefined ? score.toFixed(1) : "—"}
+                      </span>
                     </td>
                   );
                 })}
-                <td className="px-4 py-2.5 text-center">
-                  <span className={[
-                    "inline-flex items-center gap-1 font-semibold tabular-nums",
-                    row.roleGap >= 0.7 ? "text-[var(--status-concern)]" : "text-slate-400",
-                  ].join(" ")}>
-                    {row.roleGap >= 0.7 && <AlertTriangle className="size-3" />}
-                    {row.roleGap.toFixed(1)}
-                  </span>
+                <td className={`px-4 py-3.5 text-center text-sm tabular-nums whitespace-nowrap bg-slate-50/60 ${gapStyle(row.roleGap)}`}>
+                  {row.roleGap >= 0.7 && (
+                    <span className="mr-1 text-amber-400 text-[10px]" aria-hidden="true">▲</span>
+                  )}
+                  {row.roleGap.toFixed(1)}
                 </td>
               </tr>
             ))}
