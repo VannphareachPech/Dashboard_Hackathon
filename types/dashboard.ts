@@ -33,6 +33,7 @@ export interface ActionItem {
   status: ActionStatus;
   pulseOpened?: string;     // pulse label when this commitment was created, e.g. "Apr '26"
   area?: string;            // linked survey area for outcome correlation
+  notes?: string;           // optional free-text notes
 }
 
 export interface SummaryData {

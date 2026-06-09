@@ -1,27 +1,5 @@
 import type { DashboardData, TrendPoint, RoleSplitRow, ResponseCountPoint, ResponseMixRow } from "@/types/dashboard";
 
-const EMPTY_DATA: DashboardData = {
-  cycle: "",
-  generatedDate: "",
-  narrativeSummary: "",
-  summary: {
-    totalResponses: 0,
-    teamSize: undefined,
-    highestArea: "",
-    lowestArea: "",
-    overallStatus: "No Data",
-    overallScore: 0,
-    scoreDelta: undefined,
-  },
-  areaScores: [],
-  trends: [],
-  recommendations: [],
-  actions: [],
-  roleSplit: [],
-  responseCounts: [],
-  responseMix: [],
-};
-
 function normalizeTrendList(raw: unknown): TrendPoint[] {
   if (!Array.isArray(raw)) return [];
 
@@ -36,184 +14,11 @@ function normalizeTrendList(raw: unknown): TrendPoint[] {
 }
 
 function hasUsablePulseHistory(trends: TrendPoint[]): boolean {
-  return trends.length > 0;
+  if (trends.length < 2) return false;
+  return trends.every((t) => !/unknown/i.test(String(t.cycle || "")));
 }
 
-function inferStatusFromScore(score: number): string {
-  if (!isFinite(score) || score <= 0) return "No Data";
-  if (score >= 4.0) return "Strong";
-  if (score >= 3.5) return "Stable";
-  if (score >= 3.0) return "Watch";
-  return "At Risk";
-}
 
-function normalizeRoleSplit(raw: unknown): RoleSplitRow[] {
-  if (!Array.isArray(raw)) return [];
-
-  return raw
-    .map((item) => item as Record<string, unknown>)
-    .map((row) => {
-      const area = String(row.area || "").trim();
-
-      const directScores = row.scores && typeof row.scores === "object"
-        ? Object.entries(row.scores as Record<string, unknown>)
-            .reduce((acc, [k, v]) => {
-              const n = Number(v);
-              if (k && Number.isFinite(n)) acc[k] = n;
-              return acc;
-            }, {} as Record<string, number>)
-        : {};
-
-      // Fallback: some payloads flatten role columns instead of nested scores.
-      const flatScores = Object.entries(row).reduce((acc, [k, v]) => {
-        if (k === "area" || k === "scores" || k === "roleGap") return acc;
-        const n = Number(v);
-        if (k && Number.isFinite(n)) acc[k] = n;
-        return acc;
-      }, {} as Record<string, number>);
-
-      const scores = Object.keys(directScores).length > 0 ? directScores : flatScores;
-      const vals = Object.values(scores);
-
-      const rawGap = Number(row.roleGap);
-      const roleGap = Number.isFinite(rawGap)
-        ? Number(rawGap.toFixed(1))
-        : (vals.length >= 2 ? Number((Math.max(...vals) - Math.min(...vals)).toFixed(1)) : 0);
-
-      return { area, scores, roleGap };
-    })
-    .filter((r) => r.area.length > 0 && Object.keys(r.scores).length > 0);
-}
-
-// ─── Mock data ────────────────────────────────────────────────────────────
-// Used when APPS_SCRIPT_URL is not set, or during local development.
-// Replace with real Apps Script endpoint values once wired up.
-const MOCK_DATA: DashboardData = {
-  cycle: "Jun '26",
-  generatedDate: "2026-06-08",
-  narrativeSummary:
-    "Team sentiment is stable at 3.8/5, up 0.1 from Apr '26. " +
-    "Ways of Working showed the biggest improvement this pulse (+0.4). " +
-    "Workload & Sustainability has been flagged for 3 consecutive pulses — a commitment to review sprint capacity is currently In Progress.",
-  summary: {
-    totalResponses: 42,
-    teamSize: 58,
-    highestArea: "Team Climate & Safety",
-    lowestArea: "Workload & Sustainability",
-    overallStatus: "Stable",
-    overallScore: 3.8,
-    scoreDelta: 0.1,
-  },
-  areaScores: [
-    { area: "Direction & Priorities",    score: 4.1, delta:  0.2, pulsesAtRisk: 0 },
-    { area: "Value & Focus",             score: 3.9, delta:  0.1, pulsesAtRisk: 0 },
-    { area: "Ownership & Empowerment",   score: 3.7, delta:  0.0, pulsesAtRisk: 0 },
-    { area: "Ways of Working",           score: 3.8, delta:  0.4, pulsesAtRisk: 0 },
-    { area: "Collaboration & Support",   score: 4.2, delta:  0.1, pulsesAtRisk: 0 },
-    { area: "Workload & Sustainability", score: 3.2, delta: -0.2, pulsesAtRisk: 3 },
-    { area: "Team Climate & Safety",     score: 4.4, delta:  0.2, pulsesAtRisk: 0 },
-  ],
-  trends: [
-    {
-      cycle: "Oct '25", overallScore: 3.3,
-      "Direction & Priorities": 3.5, "Value & Focus": 3.4, "Ownership & Empowerment": 3.2,
-      "Ways of Working": 3.1, "Collaboration & Support": 3.6, "Workload & Sustainability": 3.0, "Team Climate & Safety": 3.7,
-    },
-    {
-      cycle: "Dec '25", overallScore: 3.4,
-      "Direction & Priorities": 3.6, "Value & Focus": 3.5, "Ownership & Empowerment": 3.3,
-      "Ways of Working": 3.2, "Collaboration & Support": 3.7, "Workload & Sustainability": 3.1, "Team Climate & Safety": 3.8,
-    },
-    {
-      cycle: "Feb '26", overallScore: 3.5,
-      "Direction & Priorities": 3.7, "Value & Focus": 3.6, "Ownership & Empowerment": 3.5,
-      "Ways of Working": 3.3, "Collaboration & Support": 3.9, "Workload & Sustainability": 3.2, "Team Climate & Safety": 4.0,
-    },
-    {
-      cycle: "Apr '26", overallScore: 3.7,
-      "Direction & Priorities": 3.9, "Value & Focus": 3.8, "Ownership & Empowerment": 3.7,
-      "Ways of Working": 3.4, "Collaboration & Support": 4.1, "Workload & Sustainability": 3.4, "Team Climate & Safety": 4.2,
-    },
-    {
-      cycle: "Jun '26", overallScore: 3.8,
-      "Direction & Priorities": 4.1, "Value & Focus": 3.9, "Ownership & Empowerment": 3.7,
-      "Ways of Working": 3.8, "Collaboration & Support": 4.2, "Workload & Sustainability": 3.2, "Team Climate & Safety": 4.4,
-    },
-  ],
-  recommendations: [
-    {
-      theme: "Workload Balance",
-      frequency: 12,
-      pulsesActive: 3,
-      areaLink: "Workload & Sustainability",
-      suggestedAction: "Review sprint capacity and backlog prioritisation",
-    },
-    {
-      theme: "Direction Clarity",
-      frequency: 8,
-      pulsesActive: 2,
-      areaLink: "Direction & Priorities",
-      suggestedAction: "Increase frequency of team-level goal reviews",
-    },
-    {
-      theme: "Recognition",
-      frequency: 6,
-      pulsesActive: 1,
-      suggestedAction: "Implement monthly recognition moments in team standup",
-    },
-  ],
-  actions: [
-    {
-      concern: "Workload consistently high",
-      suggestedAction: "Review sprint capacity planning",
-      owner: "Eng Lead",
-      status: "In Progress",
-      pulseOpened: "Apr '26",
-      area: "Workload & Sustainability",
-    },
-    {
-      concern: "Unclear quarterly priorities",
-      suggestedAction: "Monthly OKR review with full team",
-      owner: "Product Manager",
-      status: "Planned",
-      pulseOpened: "Jun '26",
-      area: "Direction & Priorities",
-    },
-    {
-      concern: "Low psychological safety signals",
-      suggestedAction: "Team retrospective workshop",
-      owner: "Scrum Master",
-      status: "Completed",
-      pulseOpened: "Feb '26",
-      area: "Team Climate & Safety",
-    },
-  ],
-  roleSplit: [
-    { area: "Direction & Priorities",    scores: { "Product Management": 4.1, "Product Development": 3.7, "Shared / Enabled": 3.8 }, roleGap: 0.4 },
-    { area: "Value & Focus",             scores: { "Product Management": 3.8, "Product Development": 3.3, "Shared / Enabled": 3.4 }, roleGap: 0.5 },
-    { area: "Ownership & Empowerment",   scores: { "Product Management": 3.7, "Product Development": 3.0, "Shared / Enabled": 3.4 }, roleGap: 0.7 },
-    { area: "Ways of Working",           scores: { "Product Management": 3.4, "Product Development": 3.0, "Shared / Enabled": 3.2 }, roleGap: 0.4 },
-    { area: "Collaboration & Support",   scores: { "Product Management": 3.5, "Product Development": 3.1, "Shared / Enabled": 3.2 }, roleGap: 0.4 },
-    { area: "Workload & Sustainability", scores: { "Product Management": 3.1, "Product Development": 2.5, "Shared / Enabled": 2.8 }, roleGap: 0.6 },
-    { area: "Team Climate & Safety",     scores: { "Product Management": 4.0, "Product Development": 3.7, "Shared / Enabled": 3.8 }, roleGap: 0.3 },
-  ] as RoleSplitRow[],
-  responseCounts: [
-    { cycle: "Oct '25", responseCount: 42 },
-    { cycle: "Dec '25", responseCount: 48 },
-    { cycle: "Feb '26", responseCount: 45 },
-    { cycle: "Apr '26", responseCount: 47 },
-    { cycle: "Jun '26", responseCount: 44 },
-  ] as ResponseCountPoint[],
-  responseMix: [
-    { area: "Direction & Priorities", positive: 72, mixed: 20, negative: 8, total: 44 },
-    { area: "Value & Focus", positive: 61, mixed: 27, negative: 12, total: 44 },
-    { area: "Ownership & Empowerment", positive: 55, mixed: 31, negative: 14, total: 44 },
-    { area: "Ways of Working", positive: 49, mixed: 34, negative: 17, total: 44 },
-    { area: "Collaboration & Support", positive: 52, mixed: 32, negative: 16, total: 44 },
-    { area: "Workload & Sustainability", positive: 38, mixed: 36, negative: 26, total: 44 },
-    { area: "Team Climate & Safety", positive: 70, mixed: 22, negative: 8, total: 44 },
-  ] as ResponseMixRow[],
-};
 
 // ─── Fetch ────────────────────────────────────────────────────────────────
 // Set APPS_SCRIPT_URL in your .env.local (never expose in client bundle):
@@ -221,13 +26,13 @@ const MOCK_DATA: DashboardData = {
 //
 // This function runs server-side only (Next.js Server Component).
 
-export async function fetchDashboardData(): Promise<DashboardData> {
+export async function fetchDashboardData(): Promise<DashboardData | null> {
   const url = process.env.APPS_SCRIPT_URL;
   const isDev = process.env.NODE_ENV !== "production";
 
   if (!url) {
-    // No endpoint configured — return explicit empty state
-    return EMPTY_DATA;
+    // No endpoint configured — return null (no data available)
+    return null;
   }
 
   try {
@@ -240,7 +45,7 @@ export async function fetchDashboardData(): Promise<DashboardData> {
 
     if (!res.ok) {
       console.error(`Apps Script fetch failed: ${res.status}`);
-      return EMPTY_DATA;
+      return null;
     }
 
     const contentType = (res.headers.get("content-type") || "").toLowerCase();
@@ -255,22 +60,10 @@ export async function fetchDashboardData(): Promise<DashboardData> {
           preview: raw.slice(0, 180),
         }
       );
-      return EMPTY_DATA;
+      return null;
     }
 
     const data = JSON.parse(raw) as Partial<DashboardData>;
-
-    const areaScores = Array.isArray(data.areaScores)
-      ? data.areaScores
-          .map((a) => ({
-            ...a,
-            area: String(a.area || "").trim(),
-            score: Number(a.score) || 0,
-            delta: a.delta !== undefined ? Number(a.delta) : undefined,
-            pulsesAtRisk: a.pulsesAtRisk !== undefined ? Number(a.pulsesAtRisk) : undefined,
-          }))
-          .filter((a) => a.area.length > 0)
-      : [];
 
     // Guard against sparse/invalid trend data from sheet labels/mapping.
     const liveTrends = normalizeTrendList(data.trends);
@@ -279,44 +72,39 @@ export async function fetchDashboardData(): Promise<DashboardData> {
       trends.length > 0
         ? Number(trends[trends.length - 1].overallScore) || 0
         : 0;
-    const areaAverageScore = areaScores.length > 0
-      ? areaScores.reduce((sum, a) => sum + (Number(a.score) || 0), 0) / areaScores.length
-      : 0;
     const rawScore = Number((data.summary || {}).overallScore);
-    const resolvedScore = rawScore > 0
-      ? rawScore
-      : latestTrendScore > 0
-        ? latestTrendScore
-        : areaAverageScore > 0
-          ? Number(areaAverageScore.toFixed(1))
-          : 0;
+    const resolvedScore = rawScore > 0 ? rawScore : latestTrendScore;
 
-    const rawStatus = String((data.summary || {}).overallStatus || "").trim();
-    const resolvedStatus =
-      rawStatus && !/^summary\s*insight$/i.test(rawStatus)
-        ? rawStatus
-        : inferStatusFromScore(resolvedScore);
+    // Return null if no valid data
+    if (!data.summary || !Array.isArray(data.areaScores) || data.areaScores.length === 0) {
+      return null;
+    }
 
     const normalized: DashboardData = {
-      ...EMPTY_DATA,
-      ...data,
-      areaScores,
-      trends,
+      cycle: String(data.cycle || "").trim() || "Unknown",
+      generatedDate: String(data.generatedDate || "").trim() || new Date().toISOString().split('T')[0],
+      narrativeSummary: data.narrativeSummary,
       summary: {
-        ...EMPTY_DATA.summary,
-        ...(data.summary || {}),
         totalResponses: Number((data.summary || {}).totalResponses) || 0,
+        highestArea: String((data.summary || {}).highestArea || ""),
+        lowestArea: String((data.summary || {}).lowestArea || ""),
+        overallStatus: String((data.summary || {}).overallStatus || ""),
         overallScore: resolvedScore,
-        overallStatus: resolvedStatus,
         teamSize: Number((data.summary || {}).teamSize) || undefined,
       },
-      roleSplit: normalizeRoleSplit(data.roleSplit),
+      areaScores: Array.isArray(data.areaScores) ? data.areaScores : [],
+      trends,
+      recommendations: Array.isArray(data.recommendations) ? data.recommendations : [],
+      actions: Array.isArray(data.actions) ? data.actions : [],
+      roleSplit: Array.isArray(data.roleSplit) && data.roleSplit.length > 0
+        ? data.roleSplit
+        : undefined,
       responseCounts: Array.isArray(data.responseCounts) && data.responseCounts.length > 0
         ? data.responseCounts
-        : [],
+        : undefined,
       responseMix: Array.isArray(data.responseMix) && data.responseMix.length > 0
         ? data.responseMix
-        : [],
+        : undefined,
     };
 
     // Compute scoreDelta from trend history when consistent with the resolved score.
@@ -334,6 +122,6 @@ export async function fetchDashboardData(): Promise<DashboardData> {
     return normalized;
   } catch (err) {
     console.error("fetchDashboardData error:", err);
-    return EMPTY_DATA;
+    return null;
   }
 }

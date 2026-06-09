@@ -90,6 +90,24 @@ function GroupDivider() {
 
 export default async function DashboardPage() {
   const data = await fetchDashboardData();
+
+  // Show no data state if fetch failed or no data available
+  if (!data) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+        <div className="text-center">
+          <h1 className="text-3xl font-bold text-slate-800 mb-2">No Data Available</h1>
+          <p className="text-slate-600 mb-6 max-w-md">
+            The dashboard is not configured with a data source. Please set up the Apps Script endpoint in your environment variables to load pulse survey data.
+          </p>
+          <div className="text-sm text-slate-500 font-mono bg-slate-100 p-4 rounded inline-block text-left">
+            Set APPS_SCRIPT_URL in .env.local
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const { cycle, generatedDate, narrativeSummary, summary, areaScores, trends, recommendations, actions, roleSplit, responseCounts, responseMix } = data;
   const nextStepRecommendations = recommendations.length > 0 ? recommendations : NEXT_STEPS_MOCK_RECOMMENDATIONS;
   const nextStepActions = actions.length > 0 ? actions : NEXT_STEPS_MOCK_ACTIONS;
@@ -236,7 +254,7 @@ export default async function DashboardPage() {
             </div>
 
             <div className="pt-5 mt-5 border-t border-slate-100/80">
-              <ActionTracker actions={nextStepActions} />
+              <ActionTracker actions={nextStepActions} currentCycle={cycle} />
             </div>
 
           </section>
