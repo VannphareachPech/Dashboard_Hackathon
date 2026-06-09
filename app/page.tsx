@@ -17,6 +17,7 @@ import RoleSplitHeatmap from "@/components/RoleSplitHeatmap";
 import ResponseCountChart from "@/components/ResponseCountChart";
 import ResponseMixChart from "@/components/ResponseMixChart";
 import CurrentPulseBarChart from "@/components/CurrentPulseBarChart";
+import OverallResponseMixTrendChart from "@/components/OverallResponseMixTrendChart";
 
 
 function statusAccent(status: string): "green" | "amber" | "red" | "blue" {
@@ -106,6 +107,13 @@ export default async function DashboardPage() {
       <Section title="Trends by Survey Area">
         <PulseQuestionTrendChart responseAllRawData={responseAllRawData ?? []} />
       </Section>
+
+      {/* ── Overall Response Mix Trend ─────────────────── */}
+      {responseAllRawData && responseAllRawData.length > 0 && (
+        <Section title="Overall Response Mix Trend">
+          <OverallResponseMixTrendChart responseAllRawData={responseAllRawData} />
+        </Section>
+      )}
 
       {/* ── Charts row ────────────────────────────────── */}
       <Section title="Survey Results">
