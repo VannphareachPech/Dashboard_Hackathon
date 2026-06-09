@@ -2,11 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Import Inter from Google Fonts */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+:root {
+  /* Status colors — plain hex so they work in SVG (Recharts) and CSS */
+  --status-strong: #16a34a;
+  --status-stable: #6366f1;
+  --status-watch: #ca8a04;
+  --status-concern: #dc2626;
+}
 
 body {
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
   background-color: #f8fafc;
   color: #1e293b;
+  font-feature-settings: normal;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }

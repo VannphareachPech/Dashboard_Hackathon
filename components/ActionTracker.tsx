@@ -1,82 +1,87 @@
+import { CheckCircle, Clock, Calendar } from "lucide-react";
 import type { ActionItem, ActionStatus } from "@/types/dashboard";
 
 interface ActionTrackerProps {
   actions: ActionItem[];
 }
 
-const statusStyles: Record<ActionStatus, string> = {
-  Planned:       "bg-slate-100 text-slate-600",
-  "In Progress": "bg-blue-50 text-blue-700",
-  Completed:     "bg-emerald-50 text-emerald-700",
+const statusConfig: Record<ActionStatus, {
+  label: string;
+  className: string;
+  icon: React.ReactNode;
+}> = {
+  "In Progress": {
+    label: "In Progress",
+    className: "bg-[var(--status-stable)]/10 text-[var(--status-stable)] border border-[var(--status-stable)]/20",
+    icon: <Clock className="size-2.5" />,
+  },
+  Planned: {
+    label: "Planned",
+    className: "bg-[var(--status-watch)]/10 text-[var(--status-watch)] border border-[var(--status-watch)]/20",
+    icon: <Calendar className="size-2.5" />,
+  },
+  Completed: {
+    label: "Completed",
+    className: "bg-[var(--status-strong)]/10 text-[var(--status-strong)] border border-[var(--status-strong)]/20",
+    icon: <CheckCircle className="size-2.5" />,
+  },
 };
 
 export default function ActionTracker({ actions }: ActionTrackerProps) {
   if (!actions.length) {
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 text-sm text-slate-400">
-        No commitments tracked yet.
+      <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-slate-100/60 p-5 text-sm text-slate-400">
+        No leadership actions tracked yet.
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
-      <h2 className="text-base font-semibold text-slate-700 mb-1">
-        Commitments
-      </h2>
-      <p className="text-xs text-slate-400 mb-4">
-        Leadership commitments raised from pulse feedback
-      </p>
-
+    <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-slate-100/60 overflow-hidden">
+      <div className="px-5 py-3.5 border-b border-slate-100">
+        <h3 className="text-sm font-semibold text-slate-700">Leadership Actions</h3>
+        <p className="text-xs text-slate-400 mt-0.5">
+          Actions currently underway in response to pulse feedback
+        </p>
+      </div>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-xs">
           <thead>
             <tr className="border-b border-slate-100">
-              <th className="text-left py-2 pr-4 font-semibold text-slate-500 w-[30%]">
-                Commitment
-              </th>
-              <th className="text-left py-2 pr-4 font-semibold text-slate-500 w-[15%]">
-                Area
-              </th>
-              <th className="text-left py-2 pr-4 font-semibold text-slate-500 w-[12%]">
-                Opened
-              </th>
-              <th className="text-left py-2 pr-4 font-semibold text-slate-500 w-[15%]">
-                Owner
-              </th>
-              <th className="text-left py-2 font-semibold text-slate-500 w-[13%]">
-                Status
-              </th>
+              {["Action", "Focus Area", "Started", "Owner", "Status"].map((h) => (
+                <th
+                  key={h}
+                  className="px-5 py-2 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider"
+                >
+                  {h}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {actions.map((a, i) => (
-              <tr
-                key={i}
-                className={i % 2 === 0 ? "bg-white" : "bg-slate-50/60"}
-              >
-                <td className="py-3 pr-4 font-medium text-slate-800">
-                  {a.suggestedAction}
-                </td>
-                <td className="py-3 pr-4 text-slate-500 text-xs">
-                  {a.area ?? "—"}
-                </td>
-                <td className="py-3 pr-4 text-slate-400 text-xs tabular-nums">
-                  {a.pulseOpened ?? "—"}
-                </td>
-                <td className="py-3 pr-4 text-slate-600">{a.owner}</td>
-                <td className="py-3">
-                  <span
-                    className={[
-                      "inline-block px-2.5 py-1 rounded-full text-xs font-semibold",
-                      statusStyles[a.status] ?? "bg-slate-100 text-slate-600",
-                    ].join(" ")}
-                  >
-                    {a.status}
-                  </span>
-                </td>
-              </tr>
-            ))}
+            {actions.map((a, i) => {
+              const cfg = statusConfig[a.status] ?? statusConfig["Planned"];
+              return (
+                <tr
+                  key={i}
+                  className={[
+                    "border-b border-slate-100/60 hover:bg-slate-50/30 transition-colors",
+                    i % 2 !== 0 ? "bg-slate-50/40" : "",
+                  ].join(" ")}
+                >
+                  <td className="px-5 py-2.5 font-medium text-slate-800">{a.suggestedAction}</td>
+                  <td className="px-5 py-2.5 text-slate-500">{a.area ?? "—"}</td>
+                  <td className="px-5 py-2.5 text-slate-500 tabular-nums">{a.pulseOpened ?? "—"}</td>
+                  <td className="px-5 py-2.5 text-slate-500">{a.owner}</td>
+                  <td className="px-5 py-2.5">
+                    <span className={`inline-flex items-center gap-1 text-[10px] font-semibold py-0.5 px-1.5 rounded ${cfg.className}`}>
+                      {cfg.icon}
+                      {cfg.label}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

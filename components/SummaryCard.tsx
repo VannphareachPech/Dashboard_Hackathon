@@ -1,37 +1,28 @@
 interface SummaryCardProps {
   label: string;
   value: string | number;
-  /** Optional sub-label shown below the value */
   sub?: string;
-  /** Optional colour accent: "green" | "amber" | "red" | "blue" */
   accent?: "green" | "amber" | "red" | "blue";
+  icon?: React.ReactNode;
 }
 
-const accentStyles: Record<NonNullable<SummaryCardProps["accent"]>, string> = {
-  green: "border-l-4 border-emerald-400",
-  amber: "border-l-4 border-amber-400",
-  red:   "border-l-4 border-rose-400",
-  blue:  "border-l-4 border-blue-400",
+const accentBorder: Record<NonNullable<SummaryCardProps["accent"]>, string> = {
+  green: "border-l-[var(--status-strong)]",
+  amber: "border-l-[var(--status-watch)]",
+  red:   "border-l-[var(--status-concern)]",
+  blue:  "border-l-[var(--status-stable)]",
 };
 
-export default function SummaryCard({
-  label,
-  value,
-  sub,
-  accent,
-}: SummaryCardProps) {
+export default function SummaryCard({ label, value, sub, accent, icon }: SummaryCardProps) {
+  const borderClass = accent ? accentBorder[accent] : "";
   return (
-    <div
-      className={[
-        "bg-white rounded-xl shadow-sm p-5 flex flex-col gap-1",
-        accent ? accentStyles[accent] : "border border-slate-100",
-      ].join(" ")}
-    >
-      <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
+    <div className={`rounded-lg border border-slate-200/60 bg-white px-4 py-3 flex flex-col gap-1 border-l-2 ${borderClass}`}>
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+        {icon}
         {label}
-      </p>
-      <p className="text-2xl font-bold text-slate-900 leading-tight">{value}</p>
-      {sub && <p className="text-xs text-slate-500">{sub}</p>}
+      </span>
+      <span className="text-base font-bold text-slate-900 text-balance">{value}</span>
+      {sub && <span className="text-xs text-slate-400">{sub}</span>}
     </div>
   );
 }

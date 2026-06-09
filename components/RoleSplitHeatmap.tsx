@@ -1,92 +1,100 @@
 "use client";
+import { AlertTriangle } from "lucide-react";
 import type { RoleSplitRow } from "@/types/dashboard";
 
 interface Props {
   rows: RoleSplitRow[];
 }
 
-// Color each cell by score band
-function cellColor(score: number): string {
-  if (score >= 4.0) return "bg-emerald-100 text-emerald-800";
-  if (score >= 3.5) return "bg-green-50 text-green-800";
-  if (score >= 3.0) return "bg-amber-50 text-amber-800";
-  return "bg-rose-100 text-rose-800";
-}
-
-// Color the role gap column
-function gapColor(gap: number): string {
-  if (gap >= 0.7) return "bg-orange-100 text-orange-800 font-semibold";
-  if (gap >= 0.5) return "bg-amber-50 text-amber-700";
-  return "text-slate-500";
+function scoreColor(score: number): string {
+  if (score >= 4.0) return "text-[var(--status-strong)]";
+  if (score >= 3.5) return "text-[var(--status-stable)]";
+  if (score >= 3.0) return "text-[var(--status-watch)]";
+  return "text-[var(--status-concern)]";
 }
 
 export default function RoleSplitHeatmap({ rows }: Props) {
   if (!rows || rows.length === 0) return null;
 
-  // Derive role group columns from first row
   const groups = Object.keys(rows[0].scores);
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-      <div className="px-6 py-4 border-b border-slate-100">
-        <h3 className="text-sm font-semibold text-slate-700">Role Split</h3>
-        <p className="text-xs text-slate-400 mt-0.5">
-          Score differences by role group · higher role gap = more divergent experience
-        </p>
+    <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-slate-100/60 overflow-hidden">
+
+      {/* Header */}
+      <div className="px-5 py-3.5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-700">Role Split Comparison</h3>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Larger gaps indicate differing team experiences across roles
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3 text-[10px] text-slate-400 shrink-0 sm:pt-0.5">
+          {[
+            { label: "Strong",  color: "var(--status-strong)"  },
+            { label: "Stable",  color: "var(--status-stable)"  },
+            { label: "Watch",   color: "var(--status-watch)"   },
+            { label: "At Risk", color: "var(--status-concern)" },
+          ].map(({ label, color }) => (
+            <span key={label} className="flex items-center gap-1">
+              <span className="size-1.5 rounded-full inline-block" style={{ background: color }} />
+              {label}
+            </span>
+          ))}
+        </div>
       </div>
+
+      {/* Table */}
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-xs">
           <thead>
             <tr className="border-b border-slate-100">
-              <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 w-48">
-                Pulse question
+              <th className="px-5 py-2 text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                Pulse Area
               </th>
               {groups.map((g) => (
-                <th key={g} className="px-4 py-2.5 text-xs font-semibold text-slate-500 text-center">
+                <th key={g} className="px-4 py-2 text-center text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
                   {g}
                 </th>
               ))}
-              <th className="px-4 py-2.5 text-xs font-semibold text-slate-500 text-center">
-                Role gap
+              <th className="px-4 py-2 text-center text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                Role Gap
               </th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row, i) => (
-              <tr key={row.area} className={i % 2 === 0 ? "bg-white" : "bg-slate-50/50"}>
-                <td className="px-4 py-3 text-slate-700 text-xs font-medium">{row.area}</td>
+              <tr
+                key={row.area}
+                className={[
+                  "border-b border-slate-100/60 hover:bg-slate-50/30 transition-colors",
+                  i % 2 !== 0 ? "bg-slate-50/40" : "",
+                ].join(" ")}
+              >
+                <td className="px-5 py-2.5 font-medium text-slate-700">{row.area}</td>
                 {groups.map((g) => {
                   const score = row.scores[g];
                   return (
-                    <td key={g} className={`px-4 py-3 text-center text-xs rounded-sm ${cellColor(score)}`}>
+                    <td key={g} className={`px-4 py-2.5 text-center font-semibold tabular-nums ${scoreColor(score)}`}>
                       {score !== undefined ? score.toFixed(1) : "—"}
                     </td>
                   );
                 })}
-                <td className={`px-4 py-3 text-center text-xs ${gapColor(row.roleGap)}`}>
-                  {row.roleGap.toFixed(1)}
+                <td className="px-4 py-2.5 text-center">
+                  <span className={[
+                    "inline-flex items-center gap-1 font-semibold tabular-nums",
+                    row.roleGap >= 0.7 ? "text-[var(--status-concern)]" : "text-slate-400",
+                  ].join(" ")}>
+                    {row.roleGap >= 0.7 && <AlertTriangle className="size-3" />}
+                    {row.roleGap.toFixed(1)}
+                  </span>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <div className="px-6 py-3 bg-slate-50 border-t border-slate-100">
-        <div className="flex flex-wrap gap-3 text-xs text-slate-500">
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-sm bg-emerald-100 inline-block" /> ≥ 4.0 Strong
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-sm bg-green-50 border border-green-200 inline-block" /> 3.5 – 4.0 Stable
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-sm bg-amber-50 border border-amber-200 inline-block" /> 3.0 – 3.5 Watch
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-sm bg-rose-100 inline-block" /> &lt; 3.0 At Risk
-          </span>
-        </div>
-      </div>
+
     </div>
   );
 }

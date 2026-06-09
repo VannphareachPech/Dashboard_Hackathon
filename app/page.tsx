@@ -1,7 +1,7 @@
 import { fetchDashboardData } from "@/lib/fetchDashboard";
+import { CheckCircle, TrendingUp, AlertTriangle } from "lucide-react";
 import Header from "@/components/Header";
 import HeroScore from "@/components/HeroScore";
-import NarrativeBlock from "@/components/NarrativeBlock";
 import SignalStrip from "@/components/SignalStrip";
 import FocusArea from "@/components/FocusArea";
 import SummaryCard from "@/components/SummaryCard";
@@ -9,206 +9,156 @@ import ScoreChart from "@/components/ScoreChart";
 import TrendChart from "@/components/TrendChart";
 import RecommendationTable from "@/components/RecommendationTable";
 import ActionTracker from "@/components/ActionTracker";
-
-import PulseQuestionTrendChart from "@/components/PulseQuestionTrendChart";
-import type { SummaryData } from "@/types/dashboard";
-
 import RoleSplitHeatmap from "@/components/RoleSplitHeatmap";
 import ResponseCountChart from "@/components/ResponseCountChart";
 import ResponseMixChart from "@/components/ResponseMixChart";
-import CurrentPulseBarChart from "@/components/CurrentPulseBarChart";
-import OverallResponseMixTrendChart from "@/components/OverallResponseMixTrendChart";
-import ResponseCountByPulseChart from "@/components/ResponseCountByPulseChart";
+import SectionNav from "@/components/SectionNav";
 
-
-function statusAccent(status: string): "green" | "amber" | "red" | "blue" {
-  const s = status.toLowerCase();
-  if (s === "strong") return "green";
-  if (s === "stable") return "blue";
-  if (s === "watch") return "amber";
-  if (s === "at risk") return "red";
-  return "blue";
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, label, id, children }: { title: string; label?: string; id?: string; children: React.ReactNode }) {
   return (
-    <section className="space-y-4">
-      <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-400">
-        {title}
-      </h2>
+    <section id={id} className="space-y-4 scroll-mt-20">
+      <div>
+        {label && (
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-0.5">{label}</h2>
+        )}
+        <p className="text-xl font-bold tracking-tight text-slate-900">{title}</p>
+      </div>
       {children}
     </section>
   );
 }
 
+function GroupDivider() {
+  return <div className="mt-8 border-t border-slate-100" />;
+}
+
 export default async function DashboardPage() {
   const data = await fetchDashboardData();
-  const { cycle, generatedDate, narrativeSummary, summary, areaScores, trends, recommendations, actions, responseAllRawData, responseCurrentRawData, roleSplit, responseCounts, responseMix } = data;
+  const { cycle, generatedDate, narrativeSummary, summary, areaScores, trends, recommendations, actions, roleSplit, responseCounts, responseMix } = data;
 
   const prevCycle = trends.length >= 2 ? trends[trends.length - 2].cycle : undefined;
 
   const lowestAreaData = areaScores.find((a) => a.area === summary.lowestArea);
-  const lowestScore    = lowestAreaData?.score ?? 0;
+  const lowestScore = lowestAreaData?.score ?? 0;
   const lowestPulsesAtRisk = lowestAreaData?.pulsesAtRisk;
 
   const focusSuggestion =
-    // Prefer explicit areaLink field set by Apps Script (reliable)
     recommendations.find((r) => r.areaLink === summary.lowestArea)?.suggestedAction ??
-    // Fallback: fuzzy word-match for backward compatibility with older data
     recommendations.find((r) =>
       summary.lowestArea &&
       r.theme.toLowerCase().includes(summary.lowestArea.split(" ")[0].toLowerCase())
     )?.suggestedAction;
 
   return (
-    <main className="max-w-5xl mx-auto px-4 py-10 space-y-10">
+    <>
+      <SectionNav />
 
-      {/* ── Header ─────────────────────────────────────────── */}
-      <Header
-        cycle={cycle}
-        generatedDate={generatedDate}
-        totalResponses={summary.totalResponses}
-        teamSize={summary.teamSize}
-      />
+      <div className="max-w-7xl mx-auto px-4 sm:px-8 py-6">
+        <main>
+          <section id="overview" className="space-y-4 scroll-mt-20">
+            <Header
+              cycle={cycle}
+              generatedDate={generatedDate}
+              totalResponses={summary.totalResponses}
+              teamSize={summary.teamSize}
+            />
 
-      {/* ── Hero Score ─────────────────────────────────────── */}
-      <HeroScore summary={summary} prevCycle={prevCycle} />
+            <HeroScore summary={summary} prevCycle={prevCycle} narrativeSummary={narrativeSummary} />
 
-      {/* ── Executive Narrative ────────────────────────────── */}
-      {narrativeSummary && <NarrativeBlock text={narrativeSummary} />}
+            <div className="grid grid-cols-3 gap-3">
+              <SummaryCard
+                label="Overall Status"
+                value={summary.overallStatus}
+                sub={`Score ${summary.overallScore.toFixed(1)} / 5`}
+                accent="blue"
+                icon={<CheckCircle className="size-3" />}
+              />
+              <SummaryCard
+                label="Strongest Area"
+                value={summary.highestArea}
+                accent="green"
+                icon={<TrendingUp className="size-3" />}
+              />
+              <SummaryCard
+                label="Needs Attention"
+                value={summary.lowestArea}
+                accent="red"
+                icon={<AlertTriangle className="size-3" />}
+              />
+            </div>
 
-      {/* ── Signal Strip — per-area movement ───────────────── */}
-      <SignalStrip areaScores={areaScores} />
+            {summary.lowestArea && (
+              <section id="focus" className="scroll-mt-20">
+                <FocusArea
+                  area={summary.lowestArea}
+                  score={lowestScore}
+                  pulsesAtRisk={lowestPulsesAtRisk}
+                  suggestedAction={focusSuggestion}
+                />
+              </section>
+            )}
 
-      {/* ── Focus This Pulse ───────────────────────────────── */}
-      {summary.lowestArea && (
-        <FocusArea
-          area={summary.lowestArea}
-          score={lowestScore}
-          pulsesAtRisk={lowestPulsesAtRisk}
-          suggestedAction={focusSuggestion}
-        />
-      )}
+            <section id="movement" className="scroll-mt-20">
+              <SignalStrip areaScores={areaScores} />
+            </section>
+          </section>
 
-      {/* ── At a Glance — supporting metrics ───────────────── */}
-      <Section title="At a Glance">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <SummaryCard
-            label="Overall Status"
-            value={summary.overallStatus}
-            sub={`Score: ${summary.overallScore.toFixed(1)} / 5`}
-            accent={statusAccent(summary.overallStatus)}
-          />
-          <SummaryCard label="Strongest Area" value={summary.highestArea} accent="green" />
-          <SummaryCard label="Needs Attention" value={summary.lowestArea}  accent="amber" />
-        </div>
-      </Section>
+          <GroupDivider />
+          <div className="mt-5 space-y-5">
+            {responseCounts && responseCounts.length > 0 && (
+              <Section id="participation-trend" label="Participation" title="Response Trend">
+                <ResponseCountChart data={responseCounts} summary={summary} />
+              </Section>
+            )}
 
-      {/* ── Charts Grid: 2×2 layout ───────────────────────── */}
-      <Section title="Pulse Analytics">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* 2. Pulse Question Score Trends */}
-          <div>
-            <p className="text-sm font-semibold text-slate-600 mb-2">2. Pulse Question Score Trends</p>
-            <PulseQuestionTrendChart responseAllRawData={responseAllRawData ?? []} />
+            <Section label="Scores" title="Score Over Time">
+              <TrendChart trends={trends} />
+            </Section>
           </div>
 
-          {/* 3. Current Response Mix by Question */}
-          <div>
-            <p className="text-sm font-semibold text-slate-600 mb-2">3. Current Response Mix by Question</p>
-            {responseCurrentRawData && responseCurrentRawData.length > 0 ? (
-              <CurrentPulseBarChart responseCurrentRawData={responseCurrentRawData} />
-            ) : (
-              <div className="rounded-lg border border-slate-200 bg-white p-6 h-full flex items-center justify-center">
-                <p className="text-sm text-slate-400">No current pulse data available</p>
-              </div>
+          <GroupDivider />
+          <div className="mt-5 space-y-5">
+            <Section id="area-scores" label="Scores" title="Pulse Area Breakdown">
+              <ScoreChart areaScores={areaScores} />
+            </Section>
+
+            {responseMix && responseMix.length > 0 && (
+              <Section id="response-mix" label="Sentiment" title="Team Sentiment by Area">
+                <ResponseMixChart data={responseMix} />
+              </Section>
+            )}
+
+            {roleSplit && roleSplit.length > 0 && (
+              <Section id="role-split" label="Roles" title="Score by Role Group">
+                <RoleSplitHeatmap rows={roleSplit} />
+              </Section>
             )}
           </div>
 
-          {/* 4. Response Count by Pulse */}
-          <div>
-            <p className="text-sm font-semibold text-slate-600 mb-2">4. Response Count by Pulse</p>
-            {responseAllRawData && responseAllRawData.length > 0 ? (
-              <ResponseCountByPulseChart responseAllRawData={responseAllRawData} />
-            ) : (
-              <div className="rounded-lg border border-slate-200 bg-white p-6 h-full flex items-center justify-center">
-                <p className="text-sm text-slate-400">No response data available</p>
-              </div>
-            )}
-          </div>
+          <GroupDivider />
+          <section id="next-steps" className="mt-5 space-y-4 scroll-mt-20">
+            <div>
+              <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-0.5">Next Steps</h2>
+              <p className="text-xl font-bold tracking-tight text-slate-900">Themes &amp; Leadership Actions</p>
+            </div>
 
-          {/* 5. Overall Response Mix Trend */}
-          <div>
-            <p className="text-sm font-semibold text-slate-600 mb-2">5. Overall Response Mix — Last 5 Pulses</p>
-            {responseAllRawData && responseAllRawData.length > 0 ? (
-              <OverallResponseMixTrendChart responseAllRawData={responseAllRawData} />
-            ) : (
-              <div className="rounded-lg border border-slate-200 bg-white p-6 h-full flex items-center justify-center">
-                <p className="text-sm text-slate-400">No response data available</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </Section>
+            <div>
+              <RecommendationTable recommendations={recommendations} />
+            </div>
 
-      {/* ── Charts row ────────────────────────────────── */}
-      <Section title="Survey Results">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2">
-            <ScoreChart areaScores={areaScores} />
-          </div>
-          <div className="lg:col-span-1">
-            <TrendChart trends={trends} />
-          </div>
-        </div>
-      </Section>
+            <div className="pt-5 mt-5 border-t border-slate-100/80">
+              <ActionTracker actions={actions} />
+            </div>
+          </section>
 
-      {/* ── Pulse History — full width ──────────────────────── */}
-      <Section title="Pulse History">
-        <TrendChart trends={trends} />
-      </Section>
-
-      {/* ── Area Scores ─────────────────────────────────────── */}
-      <Section title="Area Scores">
-        <ScoreChart areaScores={areaScores} />
-      </Section>
-
-
-      {/* ── Current Pulse Response Mix ─────────────────────── */}
-      {responseMix && responseMix.length > 0 && (
-        <Section title="Current Pulse Response Mix by Question">
-          <ResponseMixChart data={responseMix} />
-        </Section>
-      )}
-
-      {/* ── Role Split Heatmap ──────────────────────────────── */}
-      {roleSplit && roleSplit.length > 0 && (
-        <Section title="Role Split">
-          <RoleSplitHeatmap rows={roleSplit} />
-        </Section>
-      )}
-
-      {/* ── Response Count by Pulse ─────────────────────────── */}
-      {responseCounts && responseCounts.length > 0 && (
-        <Section title="Participation Trend">
-          <ResponseCountChart data={responseCounts} />
-        </Section>
-      )}
-
-      {/* ── Recurring Signals ───────────────────────────────── */}
-      <Section title="Recurring Signals">
-        <RecommendationTable recommendations={recommendations} />
-      </Section>
-
-      {/* ── Commitments ─────────────────────────────────────── */}
-      <Section title="Commitments">
-        <ActionTracker actions={actions} />
-      </Section>
-
-      {/* ── Footer ──────────────────────────────────────────── */}
-      <footer className="text-center text-xs text-slate-300 pt-4 border-t border-slate-100">
-        B2CSS Pulse Dashboard · Data sourced from Google Sheets · {cycle}
-      </footer>
-    </main>
+          <footer className="mt-10 pt-5 border-t border-slate-100">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-1 text-xs text-slate-400">
+              <span className="font-medium text-slate-500">B2CSS Pulse Dashboard</span>
+              <span>Data sourced from Google Sheets &middot; {cycle}</span>
+            </div>
+          </footer>
+        </main>
+      </div>
+    </>
   );
 }
