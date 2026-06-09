@@ -9,6 +9,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   ReferenceLine,
+  ReferenceArea,
 } from "recharts";
 import type { TrendPoint } from "@/types/dashboard";
 
@@ -16,11 +17,18 @@ interface TrendChartProps {
   trends: TrendPoint[];
 }
 
+function dotColor(score: number): string {
+  if (score >= 4.0) return "#34d399";
+  if (score >= 3.5) return "#60a5fa";
+  if (score >= 3.0) return "#fbbf24";
+  return "#f87171";
+}
+
 export default function TrendChart({ trends }: TrendChartProps) {
   if (!trends.length) {
     return (
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 text-sm text-slate-400">
-        No trend data available yet.
+        No pulse history available yet.
       </div>
     );
   }
@@ -28,17 +36,20 @@ export default function TrendChart({ trends }: TrendChartProps) {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
       <h2 className="text-base font-semibold text-slate-700 mb-1">
-        Score Trend
+        Pulse History
       </h2>
       <p className="text-xs text-slate-400 mb-4">
-        Overall average score across survey cycles
+        Overall sentiment score across pulse runs — shaded band = stable zone
       </p>
 
-      <ResponsiveContainer width="100%" height={220}>
+      <ResponsiveContainer width="100%" height={260}>
         <LineChart
           data={trends}
           margin={{ top: 8, right: 16, left: -8, bottom: 0 }}
         >
+          {/* Stable zone band 3.5 – 4.0 */}
+          <ReferenceArea y1={3.5} y2={4.0} fill="#eff6ff" fillOpacity={0.7} strokeOpacity={0} />
+
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
           <XAxis
             dataKey="cycle"
@@ -53,23 +64,23 @@ export default function TrendChart({ trends }: TrendChartProps) {
             axisLine={false}
             tickLine={false}
           />
-          {/* Reference line at the "Stable" threshold */}
           <ReferenceLine
             y={3.5}
-            stroke="#e2e8f0"
+            stroke="#bfdbfe"
             strokeDasharray="4 4"
-            label={{ value: "3.5 threshold", position: "insideTopRight", fontSize: 10, fill: "#cbd5e1" }}
+            label={{ value: "3.5", position: "insideTopRight", fontSize: 10, fill: "#93c5fd" }}
           />
           <Tooltip
             content={({ active, payload }) => {
               if (!active || !payload?.length) return null;
               const d = payload[0].payload as TrendPoint;
+              const color = dotColor(d.overallScore);
               return (
                 <div className="bg-white border border-slate-200 rounded-lg px-3 py-2 shadow text-sm">
                   <p className="font-semibold text-slate-700">{d.cycle}</p>
                   <p className="text-slate-500">
                     Score:{" "}
-                    <span className="font-bold text-slate-900">
+                    <span className="font-bold" style={{ color }}>
                       {d.overallScore.toFixed(1)}
                     </span>
                   </p>
@@ -80,10 +91,24 @@ export default function TrendChart({ trends }: TrendChartProps) {
           <Line
             type="monotone"
             dataKey="overallScore"
-            stroke="#4F6EF7"
-            strokeWidth={2.5}
-            dot={{ r: 5, fill: "#4F6EF7", stroke: "#fff", strokeWidth: 2 }}
-            activeDot={{ r: 7 }}
+            stroke="#94a3b8"
+            strokeWidth={2}
+            dot={(props: Record<string, unknown>) => {
+              const { cx, cy, payload } = props as { cx: number; cy: number; payload: TrendPoint };
+              const fill = dotColor(payload.overallScore);
+              return (
+                <circle
+                  key={payload.cycle}
+                  cx={cx}
+                  cy={cy}
+                  r={6}
+                  fill={fill}
+                  stroke="#fff"
+                  strokeWidth={2}
+                />
+              );
+            }}
+            activeDot={{ r: 8 }}
           />
         </LineChart>
       </ResponsiveContainer>

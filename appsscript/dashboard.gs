@@ -4,11 +4,15 @@
  * PULSE CADENCE: Runs every 6 weeks. Cycle labels use short month-year format:
  *   e.g. "Jun '26", "Apr '26", "Feb '26"
  *
+ * PULSE CADENCE: Runs every 6 weeks. Cycle labels use short month-year format:
+ *   e.g. "Jun '26", "Apr '26", "Feb '26"
+ *
  * HOW TO USE:
  *   1. Open your Google Sheet → Extensions → Apps Script
  *   2. Paste this entire file into Code.gs (replace existing content)
  *   3. Click Deploy → New Deployment → Web App
  *      - Execute as: Me
+ *      - Who has access: Anyone (or "Anyone within [org]" for internal use)
  *      - Who has access: Anyone (or "Anyone within [org]" for internal use)
  *   4. Copy the deployment URL
  *   5. Paste it into pulse-dashboard/.env.local as APPS_SCRIPT_URL=<url>
@@ -24,12 +28,27 @@
  *                          col D = status, col E = pulse opened, col F = area
  *   - Settings             key/value pairs: "Current Cycle", "Narrative Summary",
  *                          "Strong Threshold", "Stable Threshold", "Watch Threshold"
+ * SHEET TABS REQUIRED:
+ *   - Summary              col A = area name, col B = current score
+ *                          also has label/value rows (e.g. "Total Responses" | 42)
+ *   - Trend                col A = pulse label, col B = overall score,
+ *                          col C+ = per-area scores (header row 1 matches AREA_NAMES)
+ *   - Recommendation Themes col A = theme, col B = frequency, col C = action,
+ *                          col D = pulses active (optional), col E = area link (optional)
+ *   - Action Tracker       col A = concern, col B = action, col C = owner,
+ *                          col D = status, col E = pulse opened, col F = area
+ *   - Settings             key/value pairs: "Current Cycle", "Narrative Summary",
+ *                          "Strong Threshold", "Stable Threshold", "Watch Threshold"
  *
+ * CUSTOM MENU (appears in Google Sheets toolbar after opening the sheet):
+ *   Pulse Dashboard > Archive this pulse cycle  — appends current scores to Trend
+ *   Pulse Dashboard > Validate sheet structure  — checks all required tabs exist
  * CUSTOM MENU (appears in Google Sheets toolbar after opening the sheet):
  *   Pulse Dashboard > Archive this pulse cycle  — appends current scores to Trend
  *   Pulse Dashboard > Validate sheet structure  — checks all required tabs exist
  */
 
+// ── Sheet name constants ──────────────────────────────────────────────────────
 // ── Sheet name constants ──────────────────────────────────────────────────────
 var SHEET_SUMMARY         = "Summary";
 var SHEET_TREND           = "Trend";
@@ -90,6 +109,17 @@ function doGet() {
     var thresholds = getThresholds(ss);
     var trends     = getTrends(ss);
     var summary    = getSummary(ss, thresholds, trends);
+    var validation = validateSheets();
+    if (!validation.ok) {
+      return ContentService
+        .createTextOutput(JSON.stringify({ error: true, message: validation.message }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    var ss         = SpreadsheetApp.getActiveSpreadsheet();
+    var thresholds = getThresholds(ss);
+    var trends     = getTrends(ss);
+    var summary    = getSummary(ss, thresholds, trends);
 
     var payload = {
       cycle:            getCycle(ss),
@@ -113,6 +143,7 @@ function doGet() {
 
   } catch (e) {
     return ContentService
+      .createTextOutput(JSON.stringify({ error: true, message: e.message }))
       .createTextOutput(JSON.stringify({ error: true, message: e.message }))
       .setMimeType(ContentService.MimeType.JSON);
   }
@@ -160,11 +191,26 @@ function scoreToStatus(score, thresholds) {
 function getCycle(ss) {
   var map = getSheetAsMap(ss.getSheetByName(SHEET_SETTINGS));
   return map["currentcycle"] ? String(map["currentcycle"]).trim() : "Unknown Pulse";
+  var map = getSheetAsMap(ss.getSheetByName(SHEET_SETTINGS));
+  return map["currentcycle"] ? String(map["currentcycle"]).trim() : "Unknown Pulse";
 }
 
 function getGeneratedDate() {
   return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
 }
+
+// ── Summary ───────────────────────────────────────────────────────────────────
+function getSummary(ss, thresholds, trends) {
+  var map = getSheetAsMap(ss.getSheetByName(SHEET_SUMMARY));
+
+  var totalResponses = Number(map["totalresponses"] || map["totalresponse"] || map["responsestotal"]) || 0;
+  var teamSize       = Number(map["teamsize"] || map["totalteam"] || map["headcount"]) || 0;
+  var overallScore   = parseFloat(map["overallscore"] || map["averagescore"]) || 0;
+  var highestArea    = String(map["highestarea"] || map["toparea"] || "");
+  var lowestArea     = String(map["lowestarea"] || map["bottomarea"] || "");
+
+  // Derive status from score — never rely on a human-typed label in the sheet
+  var overallStatus = scoreToStatus(overallScore, thresholds);
 
 // ── Summary ───────────────────────────────────────────────────────────────────
 function getSummary(ss, thresholds, trends) {
@@ -186,11 +232,22 @@ function getSummary(ss, thresholds, trends) {
     overallStatus:  overallStatus,
     highestArea:    highestArea,
     lowestArea:     lowestArea,
+    totalResponses: totalResponses,
+    teamSize:       teamSize || undefined,
+    overallScore:   overallScore,
+    overallStatus:  overallStatus,
+    highestArea:    highestArea,
+    lowestArea:     lowestArea,
   };
 }
 
 // ── Trend history ─────────────────────────────────────────────────────────────
+// ── Trend history ─────────────────────────────────────────────────────────────
 /**
+ * Reads the Trend sheet. Row 1 = headers.
+ *   Col A = pulse label  (e.g. "Jun '26")
+ *   Col B = overall score
+ *   Col C+ = per-area scores (header must match AREA_NAMES exactly)
  * Reads the Trend sheet. Row 1 = headers.
  *   Col A = pulse label  (e.g. "Jun '26")
  *   Col B = overall score
@@ -200,7 +257,35 @@ function getTrends(ss) {
   var sheet = ss.getSheetByName(SHEET_TREND);
   if (!sheet) return [];
 
+function getTrends(ss) {
+  var sheet = ss.getSheetByName(SHEET_TREND);
+  if (!sheet) return [];
+
   var data = sheet.getDataRange().getValues();
+  if (data.length < 2) return [];
+
+  var headers = data[0]; // row 1
+  var trends = [];
+
+  for (var i = 1; i < data.length; i++) {
+    var cycle = String(data[i][0]).trim();
+    var score = parseFloat(data[i][1]);
+    if (!cycle || isNaN(score)) continue;
+
+    var point = { cycle: cycle, overallScore: score };
+
+    // Attach per-area scores if area-named columns exist in header row
+    for (var c = 2; c < headers.length; c++) {
+      var areaName  = String(headers[c]).trim();
+      var areaScore = parseFloat(data[i][c]);
+      if (areaName && !isNaN(areaScore)) {
+        point[areaName] = areaScore;
+      }
+    }
+
+    trends.push(point);
+  }
+  return trends;
   if (data.length < 2) return [];
 
   var headers = data[0]; // row 1
@@ -234,6 +319,11 @@ function getTrends(ss) {
  * no manual columns needed in the Summary sheet.
  */
 function getAreaScores(ss, thresholds, trends) {
+ * Reads area scores from Summary sheet (col A = area name, col B = score).
+ * Computes delta and pulsesAtRisk automatically from Trend history —
+ * no manual columns needed in the Summary sheet.
+ */
+function getAreaScores(ss, thresholds, trends) {
   var sheet = ss.getSheetByName(SHEET_SUMMARY);
   if (!sheet) return [];
 
@@ -242,6 +332,33 @@ function getAreaScores(ss, thresholds, trends) {
 
   for (var i = 0; i < data.length; i++) {
     var area = String(data[i][0]).trim();
+    if (AREA_NAMES.indexOf(area) === -1) continue;
+
+    var score = parseFloat(data[i][1]) || 0;
+    var entry = { area: area, score: score };
+
+    // Auto-compute delta from Trend per-area history
+    if (trends.length >= 2) {
+      var prevPoint      = trends[trends.length - 2];
+      var prevAreaScore  = parseFloat(prevPoint[area]);
+      if (!isNaN(prevAreaScore)) {
+        entry.delta = Math.round((score - prevAreaScore) * 10) / 10;
+      }
+    }
+
+    // Auto-compute pulsesAtRisk: count consecutive pulses below stable threshold
+    var streak = 0;
+    for (var t = trends.length - 1; t >= 0; t--) {
+      var trendAreaScore = parseFloat(trends[t][area]);
+      if (!isNaN(trendAreaScore) && trendAreaScore < thresholds.stable) {
+        streak++;
+      } else {
+        break;
+      }
+    }
+    if (streak > 0) entry.pulsesAtRisk = streak;
+
+    scores.push(entry);
     if (AREA_NAMES.indexOf(area) === -1) continue;
 
     var score = parseFloat(data[i][1]) || 0;
@@ -324,10 +441,64 @@ function getNarrativeSummary(ss, summary, trends) {
   return "Team sentiment is " + status + " at " + score + "/5" + deltaStr + "." +
     (biggestMover || (" " + highest + " is the strongest area this pulse.")) +
     (streakNote   || (" " + lowest  + " remains the area requiring most attention."));
+// ── Narrative summary ─────────────────────────────────────────────────────────
+function getNarrativeSummary(ss, summary, trends) {
+  // Custom override from Settings takes priority
+  var map    = getSheetAsMap(ss.getSheetByName(SHEET_SETTINGS));
+  var custom = map["narrativesummary"] || map["executivesummary"];
+  if (custom && String(custom).trim()) return String(custom).trim();
+
+  // Auto-generate from data
+  var score   = (summary.overallScore || 0).toFixed(1);
+  var status  = (summary.overallStatus || "Stable").toLowerCase();
+  var lowest  = summary.lowestArea  || "\u2014";
+  var highest = summary.highestArea || "\u2014";
+
+  var deltaStr = "";
+  if (trends.length >= 2) {
+    var prev = trends[trends.length - 2].overallScore;
+    var curr = trends[trends.length - 1].overallScore;
+    var diff = Math.round((curr - prev) * 10) / 10;
+    var prevLabel = trends[trends.length - 2].cycle;
+    if (diff > 0)      deltaStr = ", up "   + diff.toFixed(1) + " from " + prevLabel;
+    else if (diff < 0) deltaStr = ", down " + Math.abs(diff).toFixed(1) + " from " + prevLabel;
+    else               deltaStr = ", unchanged from " + prevLabel;
+  }
+
+  // Find biggest per-area improvement this pulse
+  var biggestMover = "";
+  if (trends.length >= 2) {
+    var maxDelta = 0;
+    for (var a = 0; a < AREA_NAMES.length; a++) {
+      var area  = AREA_NAMES[a];
+      var prev2 = parseFloat(trends[trends.length - 2][area]);
+      var curr2 = parseFloat(trends[trends.length - 1][area]);
+      if (!isNaN(prev2) && !isNaN(curr2)) {
+        var d = Math.round((curr2 - prev2) * 10) / 10;
+        if (d > maxDelta) { maxDelta = d; biggestMover = area; }
+      }
+    }
+    biggestMover = (biggestMover && maxDelta > 0)
+      ? " " + biggestMover + " showed the biggest improvement (+\u200b" + maxDelta.toFixed(1) + ")."
+      : "";
+  }
+
+  var streakNote = "";
+  if (summary.lowestAreaPulsesAtRisk && summary.lowestAreaPulsesAtRisk >= 2) {
+    streakNote = " " + lowest + " has been flagged for " + summary.lowestAreaPulsesAtRisk +
+      " consecutive pulses.";
+  }
+
+  return "Team sentiment is " + status + " at " + score + "/5" + deltaStr + "." +
+    (biggestMover || (" " + highest + " is the strongest area this pulse.")) +
+    (streakNote   || (" " + lowest  + " remains the area requiring most attention."));
 }
 
 // ── Recurring signals (recommendation themes) ─────────────────────────────────
+// ── Recurring signals (recommendation themes) ─────────────────────────────────
 /**
+ * Col A = theme, B = frequency, C = suggested action,
+ * D = pulses active (optional), E = area link (optional)
  * Col A = theme, B = frequency, C = suggested action,
  * D = pulses active (optional), E = area link (optional)
  */
@@ -356,17 +527,39 @@ function getRecommendations(ss) {
     if (areaLink) rec.areaLink = areaLink;
 
     recs.push(rec);
+    var theme = String(data[i][0]).trim();
+    if (!theme) continue;
+
+    var freq         = parseInt(data[i][1], 10);
+    var action       = String(data[i][2] || "").trim();
+    var pulsesActive = (data[i].length > 3 && data[i][3] !== "") ? parseInt(data[i][3], 10)   : null;
+    var areaLink     = (data[i].length > 4 && data[i][4] !== "") ? String(data[i][4]).trim() : null;
+
+    var rec = {
+      theme:           theme,
+      frequency:       isNaN(freq) ? 0 : freq,
+      suggestedAction: action,
+    };
+    if (pulsesActive !== null && !isNaN(pulsesActive)) rec.pulsesActive = pulsesActive;
+    if (areaLink) rec.areaLink = areaLink;
+
+    recs.push(rec);
   }
   return recs;
 }
 
 // ── Commitments (action tracker) ──────────────────────────────────────────────
+// ── Commitments (action tracker) ──────────────────────────────────────────────
 /**
+ * Col A = concern, B = commitment/action, C = owner, D = status,
+ * E = pulse opened, F = area
+ */
  * Col A = concern, B = commitment/action, C = owner, D = status,
  * E = pulse opened, F = area
  */
 function getActions(ss) {
   var sheet = ss.getSheetByName(SHEET_ACTIONS);
+  if (!sheet) return [];
   if (!sheet) return [];
 
   var data = sheet.getDataRange().getValues();
@@ -377,7 +570,17 @@ function getActions(ss) {
     if (!concern) continue;
 
     var action = {
+
+    var action = {
       concern:         concern,
+      suggestedAction: String(data[i][1] || "").trim(),
+      owner:           String(data[i][2] || "").trim(),
+      status:          String(data[i][3] || "").trim() || "Planned",
+    };
+    if (data[i].length > 4 && String(data[i][4]).trim()) action.pulseOpened = String(data[i][4]).trim();
+    if (data[i].length > 5 && String(data[i][5]).trim()) action.area = String(data[i][5]).trim();
+
+    actions.push(action);
       suggestedAction: String(data[i][1] || "").trim(),
       owner:           String(data[i][2] || "").trim(),
       status:          String(data[i][3] || "").trim() || "Planned",

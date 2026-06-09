@@ -103,6 +103,14 @@ export default function ScoreChart({ areaScores }: ScoreChartProps) {
                     Score:{" "}
                     <span className="font-bold text-slate-900">{d.score.toFixed(1)}</span>
                   </p>
+                  {d.delta !== undefined && (
+                    <p className={d.delta > 0 ? "text-emerald-600" : d.delta < 0 ? "text-rose-600" : "text-slate-400"}>
+                      {d.delta > 0 ? `↑ +${d.delta.toFixed(1)}` : d.delta < 0 ? `↓ ${d.delta.toFixed(1)}` : "→ 0.0"}{" vs last pulse"}
+                    </p>
+                  )}
+                  {d.pulsesAtRisk !== undefined && d.pulsesAtRisk >= 2 && (
+                    <p className="text-amber-600">⚠ {d.pulsesAtRisk} consecutive pulses at risk</p>
+                  )}
                 </div>
               );
             }}
