@@ -1,5 +1,135 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import type { GeminiInsightsResponse } from "@/types/gemini";
+
+type RoleSplitRowLike = {
+  area?: string;
+  scores?: Record<string, number>;
+  roleGap?: number;
+};
+
+type StoredInsightEnvelope = {
+  ok?: boolean;
+  exists?: boolean;
+  insight?: {
+    summary?: string;
+    rows?: unknown[];
+    generatedAt?: string;
+    generatedBy?: string;
+    dataFingerprint?: string;
+  };
+};
+
+const APPS_SCRIPT_URL = process.env.APPS_SCRIPT_URL;
+
+function buildDataFingerprint(payload: {
+  cycle: unknown;
+  summary: unknown;
+  areaScores: unknown;
+  trends: unknown;
+  recommendations: unknown;
+  roleSplit: unknown;
+}) {
+  const raw = JSON.stringify({
+    cycle: payload.cycle,
+    summary: payload.summary,
+    areaScores: payload.areaScores,
+    trends: payload.trends,
+    recommendations: payload.recommendations,
+    roleSplit: payload.roleSplit,
+  });
+  return createHash("sha256").update(raw).digest("hex");
+}
+
+async function fetchStoredInsight(cycle: string) {
+  if (!APPS_SCRIPT_URL || !cycle) return null;
+
+  const url = new URL(APPS_SCRIPT_URL);
+  url.searchParams.set("action", "getAiInsight");
+  url.searchParams.set("cycle", cycle);
+
+  try {
+    const res = await fetch(url.toString(), { cache: "no-store" });
+    if (!res.ok) return null;
+    const payload = await res.json() as StoredInsightEnvelope;
+    if (!payload?.exists || !payload.insight) return null;
+
+    const summary = String(payload.insight.summary || "").trim();
+    const rows = Array.isArray(payload.insight.rows) ? payload.insight.rows : [];
+    if (!summary || rows.length === 0) return null;
+
+    return {
+      summary,
+      rows,
+      generatedAt: String(payload.insight.generatedAt || "").trim() || undefined,
+      generatedBy: String(payload.insight.generatedBy || "").trim() || undefined,
+      dataFingerprint: String(payload.insight.dataFingerprint || "").trim() || undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function persistInsight(args: {
+  cycle: string;
+  summary: string;
+  rows: unknown[];
+  dataFingerprint: string;
+  generatedBy: string;
+  force: boolean;
+}) {
+  if (!APPS_SCRIPT_URL || !args.cycle) return null;
+
+  try {
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify({
+        action: "upsertAiInsight",
+        cycle: args.cycle,
+        summary: args.summary,
+        rows: args.rows,
+        dataFingerprint: args.dataFingerprint,
+        generatedBy: args.generatedBy,
+        force: args.force,
+      }),
+    });
+    if (!res.ok) return null;
+    return await res.json() as {
+      ok?: boolean;
+      alreadyExists?: boolean;
+      unchangedData?: boolean;
+      insight?: {
+        generatedAt?: string;
+        generatedBy?: string;
+      };
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function GET(req: NextRequest) {
+  const cycle = String(req.nextUrl.searchParams.get("cycle") || "").trim();
+  if (!cycle) {
+    return NextResponse.json({ exists: false });
+  }
+
+  const stored = await fetchStoredInsight(cycle);
+  if (!stored) {
+    return NextResponse.json({ exists: false });
+  }
+
+  return NextResponse.json({
+    exists: true,
+    summary: stored.summary,
+    rows: stored.rows,
+    fromStorage: true,
+    generatedAt: stored.generatedAt,
+    generatedBy: stored.generatedBy,
+  });
+}
 
 function classifyDelta(delta: unknown) {
   if (typeof delta !== "number" || !Number.isFinite(delta)) return "unknown";
@@ -22,44 +152,166 @@ function classifyPriorityBand(score: unknown, pulsesAtRisk: unknown) {
 const responseCache = new Map<string, GeminiInsightsResponse>();
 
 export async function POST(req: NextRequest) {
+  const body = await req.json();
+  const {
+    cycle,
+    summary,
+    areaScores,
+    trends,
+    recommendations,
+    roleSplit,
+    forceRegenerate,
+    generatedBy,
+  } = body;
+
+  const force = Boolean(forceRegenerate);
+  const fingerprint = buildDataFingerprint({ cycle, summary, areaScores, trends, recommendations, roleSplit });
+
+  const safeCycle = String(cycle || "").trim();
+
+  if (safeCycle) {
+    const stored = await fetchStoredInsight(safeCycle);
+    const unchanged = !!(stored && stored.dataFingerprint && stored.dataFingerprint === fingerprint);
+
+    if (stored && unchanged) {
+      const persisted: GeminiInsightsResponse = {
+        summary: stored.summary,
+        rows: Array.isArray(stored.rows) ? (stored.rows as GeminiInsightsResponse["rows"]) : [],
+        alreadyExists: true,
+        fromStorage: true,
+        unchangedData: true,
+        generatedAt: stored.generatedAt,
+        generatedBy: stored.generatedBy,
+      };
+      responseCache.set(safeCycle, persisted);
+      return NextResponse.json(persisted);
+    }
+
+    if (stored && !force) {
+      const persisted: GeminiInsightsResponse = {
+        summary: stored.summary,
+        rows: Array.isArray(stored.rows) ? (stored.rows as GeminiInsightsResponse["rows"]) : [],
+        alreadyExists: true,
+        fromStorage: true,
+        unchangedData: false,
+        generatedAt: stored.generatedAt,
+        generatedBy: stored.generatedBy,
+      };
+      responseCache.set(safeCycle, persisted);
+      return NextResponse.json(persisted);
+    }
+  }
+
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ error: "GEMINI_API_KEY is not configured." }, { status: 500 });
   }
 
-  const body = await req.json();
-  const { cycle, summary, areaScores, trends, recommendations } = body;
-
   // Return cached result immediately — no API call
-  if (cycle && responseCache.has(cycle)) {
-    return NextResponse.json(responseCache.get(cycle));
+  if (safeCycle && responseCache.has(safeCycle) && !force) {
+    return NextResponse.json(responseCache.get(safeCycle));
   }
 
-  // Minimal prompt to reduce token usage (fewer tokens = less quota consumed)
+  const safeResponses = Number(summary?.totalResponses) || 0;
+  const safeTeamSize = Number(summary?.teamSize) || 0;
+  const participationRate = safeTeamSize > 0
+    ? Math.round((safeResponses / safeTeamSize) * 100)
+    : null;
+  const sampleConfidence =
+    safeResponses >= 60 ? "high" :
+    safeResponses >= 30 ? "medium" :
+    "low";
+
   const areaLines = (areaScores as any[])
     .map((area) => {
       const trend = classifyDelta(area.delta);
       const band = classifyPriorityBand(area.score, area.pulsesAtRisk);
-      const deltaPart = area.delta != null && Number.isFinite(area.delta)
-        ? `,delta=${area.delta > 0 ? "+" : ""}${area.delta}`
-        : "";
-      const riskPart = area.pulsesAtRisk ? `,riskCount=${area.pulsesAtRisk}` : "";
-      return `${area.area}:score=${area.score}${deltaPart},trend=${trend},band=${band}${riskPart}`;
+      return `${area.area}=score:${area.score}|trend:${trend}|band:${band}`;
     })
+    .join("; ");
+
+  const riskAreas = (areaScores as any[])
+    .map((area) => ({
+      area: String(area?.area || "").trim(),
+      score: Number(area?.score),
+      pulsesAtRisk: Number(area?.pulsesAtRisk) || 0,
+      band: classifyPriorityBand(area?.score, area?.pulsesAtRisk),
+    }))
+    .filter((area) => area.area && Number.isFinite(area.score))
+    .filter((area) => area.band === "critical" || area.pulsesAtRisk >= 2 || area.score < 3.5)
+    .sort((a, b) => a.score - b.score)
+    .slice(0, 3)
+    .map((area) => `${area.area}(score=${area.score.toFixed(1)}${area.pulsesAtRisk ? `,riskCount=${area.pulsesAtRisk}` : ""})`)
     .join(", ");
 
   const trendLine = (trends as any[]).slice(-3).map((t) => `${t.cycle}:${t.overallScore}`).join(", ");
+  const recentTrends = (trends as any[]).slice(-3);
+  const prevOverall = recentTrends.length >= 2 ? Number(recentTrends[recentTrends.length - 2]?.overallScore) : NaN;
+  const currentOverall = recentTrends.length >= 1
+    ? Number(recentTrends[recentTrends.length - 1]?.overallScore)
+    : Number(summary?.overallScore);
+  const trendDelta = Number.isFinite(prevOverall) && Number.isFinite(currentOverall)
+    ? Math.round((currentOverall - prevOverall) * 10) / 10
+    : null;
+  const trendDirection = classifyDelta(trendDelta);
 
-  const signalLines = (recommendations as any[]).slice(0, 3)
-    .map((recommendation) => `${recommendation.theme}(${recommendation.frequency}x${recommendation.areaLink ? `,area=${recommendation.areaLink}` : ""})`)
+  const signalLines = (recommendations as any[]).slice(0, 5)
+    .map((recommendation) => `${recommendation.theme}:${recommendation.frequency}x${recommendation.areaLink ? `[${recommendation.areaLink}]` : ""}`)
     .join(", ");
 
-  const prompt = `Team pulse data: cycle=${cycle}, score=${summary.overallScore}/5 (${summary.overallStatus}), n=${summary.totalResponses}, best=${summary.highestArea}, worst=${summary.lowestArea}. Areas: ${areaLines}. Trend: ${trendLine}. Signals: ${signalLines || "none"}.
+  const roleHotspots = (Array.isArray(roleSplit) ? roleSplit as RoleSplitRowLike[] : [])
+    .map((row): { area: string; roleGap: number | null; text: string } | null => {
+      const area = String(row.area || "").trim();
+      const scores = row.scores || {};
+      const groups = Object.entries(scores)
+        .filter(([, score]) => Number.isFinite(score))
+        .sort((a, b) => a[1] - b[1]);
+      const lowestGroups = groups
+        .slice(0, Math.min(2, groups.length))
+        .map(([name, score]) => `${name}(${score.toFixed(1)})`)
+        .join(", ");
+      if (!area || !lowestGroups) return null;
+      const roleGap = typeof row.roleGap === "number" ? row.roleGap : null;
+      return {
+        area,
+        roleGap,
+        text: `${area}: lowest=${lowestGroups}${roleGap != null ? `, roleGap=${roleGap.toFixed(1)}` : ""}`,
+      };
+    })
+    .filter((item): item is { area: string; roleGap: number | null; text: string } => item !== null)
+    .sort((a, b) => (b.roleGap ?? 0) - (a.roleGap ?? 0))
+    .slice(0, 3);
+
+  const roleSplitLines = roleHotspots.map((x) => x.text).join("; ");
+
+  const prompt = `Team pulse data (structured facts):
+pulseMeta: cycle=${cycle}, overallScore=${summary.overallScore}/5, overallStatus=${summary.overallStatus}, totalResponses=${summary.totalResponses}, participationRate=${participationRate != null ? `${participationRate}%` : "n/a"}, sampleConfidence=${sampleConfidence}
+trend: recentOverall=${trendLine || "none"}, deltaFromPrevious=${trendDelta != null ? (trendDelta > 0 ? `+${trendDelta}` : `${trendDelta}`) : "n/a"}, trendDirection=${trendDirection}
+focus: strongestArea=${summary.highestArea}, weakestArea=${summary.lowestArea}, riskAreas=${riskAreas || "none"}
+themes: ${signalLines || "none"}
+roleHotspots: ${roleSplitLines || "none"}
+areaScores: ${areaLines || "none"}
 
 Return ONLY this JSON (no markdown):
-{"summary":"<2 sentences>","rows":[{"area":"<name>","insight":"<1 sentence>","recommendation":"<1 sentence>","priority":"<High|Medium|Low>"}]}
+{"summary":"<2 sentences>","rows":[{"roleGroupsMentioning":"<comma-separated groups>","insight":"<theme label>","recommendation":"<1 sentence>"}]}
 
-Rules: mention strongest area and biggest risk in summary. One row per area. If score<3.5 or riskCount>=2 => High. If score<4 => Medium. Else => Low. If trend=declining, describe deterioration. If trend=stable, describe consistency. If trend=improving or rising, describe momentum. Recommendations must be specific and operational, not generic, and should reflect score, trend, or riskCount.`;
+Rules:
+- Return at most 5 rows.
+- Use theme-level insights, not area names as insight labels.
+- roleGroupsMentioning must use only role names from role split data when available. If a theme applies broadly with no specific group, use "All Groups". This field must never be empty.
+- Prioritize themes with broader cross-role impact and frequent recurrence in Signals.
+- Write in business presentation tone: clear, concise, executive-friendly, and non-technical.
+- If sampleConfidence is low, use cautious wording and avoid broad claims.
+- summary must be exactly 2 sentences:
+  sentence 1: current state and strongest signal.
+  sentence 2: biggest risk and immediate focus.
+- insight should be short and presentation-ready (2 to 6 words, title case preferred).
+- recommendation must be one sentence, action-led, specific owner or team implied, and framed in business outcomes.
+- Prefer impact language such as delivery predictability, decision velocity, quality, risk reduction, customer value, or team sustainability.
+- Do NOT mention numeric score deltas or "point gap" by default.
+- Mention a numeric gap only when it is essential and high severity (for example roleGap >= 1.5 or critical risk signal), and even then keep it brief.
+- Avoid filler words, hedging, and jargon (for example: "maybe", "might", "leverage", "synergy").
+- mention strongest area and biggest risk in summary.`;
 
   try {
     // Use gemini-2.5-flash — works with this project's free tier quota
@@ -160,9 +412,62 @@ Rules: mention strongest area and biggest risk in summary. One row per area. If 
       return NextResponse.json({ error: "Gemini response was malformed. Please try again." }, { status: 502 });
     }
 
-    if (cycle) responseCache.set(cycle, parsed);
+    // Deterministic sorting: breadth of role-group impact first, then signal frequency, then insight name.
+    const signalFrequencyMap = new Map<string, number>();
+    (recommendations as any[]).forEach((rec) => {
+      const key = String(rec?.theme || "").trim().toLowerCase();
+      const freq = Number(rec?.frequency) || 0;
+      if (key) signalFrequencyMap.set(key, freq);
+    });
 
-    return NextResponse.json(parsed);
+    const countRoleGroups = (text: string) =>
+      String(text || "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean).length;
+
+    parsed.rows = (parsed.rows || [])
+      .filter((row) => row && row.insight && row.recommendation && String(row.roleGroupsMentioning || "").trim())
+      .sort((a, b) => {
+        const aGroups = countRoleGroups(a.roleGroupsMentioning);
+        const bGroups = countRoleGroups(b.roleGroupsMentioning);
+        if (bGroups !== aGroups) return bGroups - aGroups;
+
+        const aFreq = signalFrequencyMap.get(String(a.insight || "").trim().toLowerCase()) || 0;
+        const bFreq = signalFrequencyMap.get(String(b.insight || "").trim().toLowerCase()) || 0;
+        if (bFreq !== aFreq) return bFreq - aFreq;
+
+        return String(a.insight || "").localeCompare(String(b.insight || ""));
+      })
+      .slice(0, 5);
+
+    let persistedGeneratedAt: string | undefined;
+    let persistedGeneratedBy: string | undefined;
+
+    if (safeCycle) {
+      const saveResult = await persistInsight({
+        cycle: safeCycle,
+        summary: parsed.summary,
+        rows: parsed.rows,
+        dataFingerprint: fingerprint,
+        generatedBy: String(generatedBy || "Dashboard UI").trim() || "Dashboard UI",
+        force,
+      });
+      persistedGeneratedAt = String(saveResult?.insight?.generatedAt || "").trim() || undefined;
+      persistedGeneratedBy = String(saveResult?.insight?.generatedBy || "").trim() || undefined;
+    }
+
+    const responsePayload: GeminiInsightsResponse = {
+      ...parsed,
+      fromStorage: false,
+      unchangedData: false,
+      generatedAt: persistedGeneratedAt,
+      generatedBy: persistedGeneratedBy,
+    };
+
+    if (safeCycle) responseCache.set(safeCycle, responsePayload);
+
+    return NextResponse.json(responsePayload);
   } catch (err: any) {
     return NextResponse.json({ error: err.message ?? "Unknown error" }, { status: 500 });
   }

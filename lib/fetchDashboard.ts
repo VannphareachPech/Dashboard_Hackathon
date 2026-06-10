@@ -27,10 +27,19 @@ export async function fetchDashboardData(): Promise<DashboardData | null> {
   }
 
   try {
-    const res = await fetch(url, {
-      cache: isDev ? "no-store" : "force-cache",
-      next: isDev ? undefined : { revalidate: 3600 },
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        cache: isDev ? "no-store" : "force-cache",
+        next: isDev ? undefined : { revalidate: 3600 },
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!res.ok) {
       console.error(`Apps Script fetch failed: ${res.status}`);
