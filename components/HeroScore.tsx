@@ -13,8 +13,7 @@ function boldAreas(sentence: string, areaNames: string[]): React.ReactNode {
 
 // ── Splits the narrative string into its natural sentences and renders
 //    the first as a headline, the rest as labelled signal pills.
-function NarrativePills({ text, areaNames }: { text: string; areaNames: string[] }) {
-  // Split on sentence boundaries — each sentence is a distinct signal.
+function NarrativePills({ text, areaNames }: { text: string; areaNames: string[] }) {  if (!text) return null;  // Split on sentence boundaries — each sentence is a distinct signal.
   const sentences = text
     .split(/(?<=\.)\s+/)
     .map((s) => s.trim())

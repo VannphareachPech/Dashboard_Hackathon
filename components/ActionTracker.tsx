@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { CheckCircle2, Circle, Edit2, Pin, Trash2 } from "lucide-react";
 import type { ActionItem, ActionStatus } from "@/types/dashboard";
 import CreateActionModal from "./CreateActionModal";
 
 const LS_KEY = "b2css_local_actions";
 const LS_HIDDEN_KEY = "b2css_hidden_backend_keys";
 const LS_PINNED_KEY = "b2css_pinned_action_keys";
+const LS_PINNED_AT_KEY = "b2css_pinned_action_timestamps";
 
 function actionKey(a: ActionItem) {
   return `${a.suggestedAction}||${a.owner}||${a.area ?? ""}`;
@@ -17,10 +19,18 @@ interface ActionTrackerProps {
   currentCycle?: string;
 }
 
-const statusStyles: Record<ActionStatus, { bg: string; text: string; dot: string }> = {
-  Planned:       { bg: "bg-slate-100",   text: "text-slate-900",   dot: "bg-slate-700" },
-  "In Progress": { bg: "bg-amber-50",    text: "text-amber-700",   dot: "bg-amber-400" },
-  Completed:     { bg: "bg-emerald-50",  text: "text-emerald-700", dot: "bg-emerald-500" },
+const STATUS_OPTIONS: ActionStatus[] = ["Planned", "In Progress", "Completed"];
+
+const statusDot: Record<ActionStatus, string> = {
+  Planned:       "bg-slate-400",
+  "In Progress": "bg-amber-400",
+  Completed:     "bg-emerald-500",
+};
+
+const statusStyles: Record<ActionStatus, { bg: string; text: string }> = {
+  Planned:       { bg: "bg-white", text: "text-slate-700" },
+  "In Progress": { bg: "bg-white", text: "text-slate-700" },
+  Completed:     { bg: "bg-white", text: "text-slate-700" },
 };
 
 export default function ActionTracker({ actions, currentCycle }: ActionTrackerProps) {
@@ -38,6 +48,10 @@ export default function ActionTracker({ actions, currentCycle }: ActionTrackerPr
     action: ActionItem;
     localIdx?: number;
   } | null>(null);
+  const [newActionId, setNewActionId] = useState<string | null>(null);
+  const [justPinnedId, setJustPinnedId] = useState<string | null>(null);
+  const [openStatusRowId, setOpenStatusRowId] = useState<string | null>(null);
+  const rowsContainerRef = useRef<HTMLTableSectionElement>(null);
 
   const [localActions, setLocalActions] = useState<ActionItem[]>(() => {
     if (typeof window === "undefined") return [];
@@ -69,6 +83,16 @@ export default function ActionTracker({ actions, currentCycle }: ActionTrackerPr
     }
   });
 
+  const [pinnedActionTimestamps, setPinnedActionTimestamps] = useState<Record<string, number>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const stored = localStorage.getItem(LS_PINNED_AT_KEY);
+      return stored ? (JSON.parse(stored) as Record<string, number>) : {};
+    } catch {
+      return {};
+    }
+  });
+
   useEffect(() => {
     try { localStorage.setItem(LS_KEY, JSON.stringify(localActions)); } catch { /* silent */ }
   }, [localActions]);
@@ -80,6 +104,10 @@ export default function ActionTracker({ actions, currentCycle }: ActionTrackerPr
   useEffect(() => {
     try { localStorage.setItem(LS_PINNED_KEY, JSON.stringify([...pinnedActionKeys])); } catch { /* silent */ }
   }, [pinnedActionKeys]);
+
+  useEffect(() => {
+    try { localStorage.setItem(LS_PINNED_AT_KEY, JSON.stringify(pinnedActionTimestamps)); } catch { /* silent */ }
+  }, [pinnedActionTimestamps]);
 
   useEffect(() => {
     if (!toastMessage) return;
@@ -96,30 +124,62 @@ export default function ActionTracker({ actions, currentCycle }: ActionTrackerPr
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [modalViewText]);
 
+  // Scroll to newly created action with highlight animation
+  useEffect(() => {
+    if (!newActionId || !rowsContainerRef.current) return;
+    
+    // Use requestAnimationFrame to ensure this runs after hydration
+    requestAnimationFrame(() => {
+      const element = rowsContainerRef.current?.querySelector(`[data-action-id="${newActionId}"]`);
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        element.classList.add("animate-pulse");
+        const timer = setTimeout(() => {
+          element.classList.remove("animate-pulse");
+          setNewActionId(null); // clear after animation
+        }, 2000);
+        return () => clearTimeout(timer);
+      } else {
+        setNewActionId(null); // clear even if element not found
+      }
+    });
+  }, [newActionId]);
+
   const visibleBackend = actions.filter((a) => !hiddenBackendKeys.has(actionKey(a)));
 
   const allRows = [
     ...visibleBackend.map((a, backendIdx) => {
       const key = actionKey(a);
       const isPinned = a.isPinned === true || pinnedActionKeys.has(key);
+      const pinnedAt = pinnedActionTimestamps[key] ?? Number.MAX_SAFE_INTEGER;
       return {
         id: `b-${backendIdx}-${key}`,
         action: { ...a, isPinned },
         isLocal: false,
         localIdx: undefined as number | undefined,
+        pinSortAt: isPinned ? pinnedAt : Number.MAX_SAFE_INTEGER,
       };
     }),
     ...localActions.map((a, localIdx) => {
       const key = actionKey(a);
       const isPinned = a.isPinned === true || pinnedActionKeys.has(key);
+      const pinnedAt = pinnedActionTimestamps[key] ?? Number.MAX_SAFE_INTEGER;
       return {
         id: `l-${localIdx}-${key}`,
         action: { ...a, isPinned },
         isLocal: true,
         localIdx,
+        pinSortAt: isPinned ? pinnedAt : Number.MAX_SAFE_INTEGER,
       };
     }),
-  ].sort((a, b) => Number(b.action.isPinned) - Number(a.action.isPinned));
+  ].sort((a, b) => {
+    const pinDelta = Number(b.action.isPinned) - Number(a.action.isPinned);
+    if (pinDelta !== 0) return pinDelta;
+    if (a.action.isPinned && b.action.isPinned) {
+      return a.pinSortAt - b.pinSortAt;
+    }
+    return 0;
+  });
 
   const successBanner = toastMessage ? (
     <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-sm font-medium text-emerald-700">
@@ -141,6 +201,9 @@ export default function ActionTracker({ actions, currentCycle }: ActionTrackerPr
       setLocalActions((prev) => [normalizedAction, ...prev]);
     } else {
       setLocalActions((prev) => [normalizedAction, ...prev]);
+      // Set the new action ID for scroll-to-action
+      const newId = `l-0-${actionKey(normalizedAction)}`;
+      setNewActionId(newId);
     }
 
     if (editingAction?.isPinned) {
@@ -150,6 +213,13 @@ export default function ActionTracker({ actions, currentCycle }: ActionTrackerPr
         const next = new Set(prev);
         next.delete(oldKey);
         next.add(newKey);
+        return next;
+      });
+      setPinnedActionTimestamps((prev) => {
+        const next = { ...prev };
+        const oldPinnedAt = next[oldKey];
+        delete next[oldKey];
+        next[newKey] = oldPinnedAt ?? Date.now();
         return next;
       });
     }
@@ -172,11 +242,24 @@ export default function ActionTracker({ actions, currentCycle }: ActionTrackerPr
   function confirmDeleteAction() {
     if (!confirmDelete) return;
     const { isLocal, action, localIdx } = confirmDelete;
+    const key = actionKey(action);
     if (isLocal && localIdx !== undefined) {
       setLocalActions((prev) => prev.filter((_, i) => i !== localIdx));
     } else {
-      setHiddenBackendKeys((prev) => new Set([...prev, actionKey(action)]));
+      setHiddenBackendKeys((prev) => new Set([...prev, key]));
     }
+    setPinnedActionKeys((prev) => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+    setPinnedActionTimestamps((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
     setConfirmDelete(null);
   }
 
@@ -187,22 +270,67 @@ export default function ActionTracker({ actions, currentCycle }: ActionTrackerPr
   }
 
   function togglePin(isLocal: boolean, action: ActionItem, localIdx?: number) {
+    const key = actionKey(action);
+    const isCurrentlyPinned = Boolean(action.isPinned);
     if (isLocal && localIdx !== undefined) {
       setLocalActions((prev) =>
         prev.map((row, i) =>
-          i === localIdx ? { ...row, isPinned: !Boolean(action.isPinned) } : row
+          i === localIdx ? { ...row, isPinned: !isCurrentlyPinned } : row
         )
       );
+      setPinnedActionTimestamps((prev) => {
+        const next = { ...prev };
+        if (isCurrentlyPinned) {
+          delete next[key];
+        } else {
+          next[key] = Date.now();
+        }
+        return next;
+      });
       return;
     }
 
-    const key = actionKey(action);
     setPinnedActionKeys((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
       return next;
     });
+    setPinnedActionTimestamps((prev) => {
+      const next = { ...prev };
+      if (isCurrentlyPinned) {
+        delete next[key];
+      } else {
+        next[key] = Date.now();
+      }
+      return next;
+    });
+  }
+
+  function handleStatusChange(newStatus: ActionStatus, isLocal: boolean, action: ActionItem, localIdx?: number) {
+    const updated = { ...action, status: newStatus };
+    if (isLocal && localIdx !== undefined) {
+      // Safe in-place update — localIdx is stable for local actions
+      setLocalActions((prev) => prev.map((a, i) => i === localIdx ? updated : a));
+    } else {
+      // For backend actions: hide original, append local copy preserving pin state
+      const key = actionKey(action);
+      setHiddenBackendKeys((prev) => new Set([...prev, key]));
+      // Preserve pin timestamp if pinned
+      if (pinnedActionKeys.has(key)) {
+        const newKey = actionKey(updated);
+        setPinnedActionKeys((prev) => { const n = new Set(prev); n.delete(key); n.add(newKey); return n; });
+        setPinnedActionTimestamps((prev) => { const n = { ...prev }; n[newKey] = n[key] ?? Date.now(); delete n[key]; return n; });
+      }
+      setLocalActions((prev) => [...prev, updated]);
+    }
+    setOpenStatusRowId(null);
+  }
+
+  function handlePinClick(rowId: string, isLocal: boolean, action: ActionItem, localIdx?: number) {
+    togglePin(isLocal, action, localIdx);
+    setJustPinnedId(rowId);
+    setTimeout(() => setJustPinnedId(null), 650);
   }
 
   const createActionButton = (
@@ -222,7 +350,7 @@ export default function ActionTracker({ actions, currentCycle }: ActionTrackerPr
     return (
       <>
         {successBanner}
-        <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-slate-100 p-5 flex items-center justify-between gap-4">
+        <div className="rounded-xl border border-slate-100 bg-white py-12 px-5 shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex items-center justify-between gap-4">
           <p className="text-sm text-slate-500">No leadership actions tracked yet.</p>
           {createActionButton}
         </div>
@@ -240,11 +368,11 @@ export default function ActionTracker({ actions, currentCycle }: ActionTrackerPr
   return (
     <>
       {successBanner}
-      <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-slate-100 p-5">
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.06)] border border-slate-100 overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-200/70 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2.5">
           <div>
             <h3 className="text-lg font-semibold text-slate-700">Leadership Action Items</h3>
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="mt-0.5 text-xs text-slate-500">
               Commitments raised from pulse insights, tracked to completion.
             </p>
           </div>
@@ -252,55 +380,45 @@ export default function ActionTracker({ actions, currentCycle }: ActionTrackerPr
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-sm table-fixed">
+          <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-100">
-                <th className="py-3 pr-2 w-[4%] min-w-[46px] text-center" aria-label="Pin" />
-                <th className="min-w-[240px] pr-4 text-left py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Focus Area</th>
-                <th className="min-w-[200px] px-4 text-left py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Action</th>
-                <th className="w-[100px] min-w-[100px] px-1 text-left py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Owner</th>
-                <th className="w-[112px] min-w-[112px] px-1 text-left py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
-                <th className="flex-1 min-w-[320px] px-4 text-left py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Note</th>
-                <th className="py-3 w-[5%] min-w-[86px] text-right" />
+              <tr className="bg-slate-50 border-b border-slate-200/70">
+                <th className="w-[40px] px-2 py-3" aria-label="Pin" />
+                <th className="w-[220px] px-2 py-3 text-left text-sm font-semibold text-slate-600">Focus Area</th>
+                <th className="w-[220px] px-2 py-3 text-left text-sm font-semibold text-slate-600">Action</th>
+                <th className="w-[190px] px-2 py-3 text-left text-sm font-semibold text-slate-600">Owner</th>
+                <th className="w-[140px] px-2 py-3 text-left text-sm font-semibold text-slate-600">Status</th>
+                <th className="w-[190px] px-2 py-3 text-left text-sm font-semibold text-slate-600">Note</th>
+                <th className="w-[100px] px-2 py-3 text-center text-xs font-semibold text-slate-600 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
+            <tbody ref={rowsContainerRef} className="divide-y divide-slate-100">
               {allRows.map((row) => {
                 const a = row.action;
                 const badge = statusStyles[a.status] ?? statusStyles["Planned"];
                 return (
-                  <tr key={row.id} className="hover:bg-slate-50/70 transition-colors">
-                    <td className="py-3.5 pr-2 align-middle text-center">
+                  <tr key={row.id} data-action-id={row.id} className={`group hover:bg-slate-50/40 transition-colors duration-100 ${justPinnedId === row.id ? "animate-pin-flash" : ""}`}>
+                    <td className="w-[40px] px-2 py-3.5 align-middle text-center">
                       <button
                         type="button"
                         title={a.isPinned ? "Unpin record" : "Pin record"}
-                        onClick={() => togglePin(row.isLocal, a, row.localIdx)}
+                          onClick={() => handlePinClick(row.id, row.isLocal, a, row.localIdx)}
                         className={[
-                          "p-2 rounded-md border transition-all focus-visible:outline-none focus-visible:ring-2",
+                          "rounded p-1 transition-colors focus-visible:outline-none",
                           a.isPinned
-                            ? "bg-amber-100/70 border-amber-200 text-amber-800 shadow-inner hover:bg-amber-200/70 focus-visible:ring-amber-300/60"
-                            : "bg-indigo-50 border-indigo-100/60 text-indigo-400 opacity-70 hover:opacity-100 hover:text-indigo-600 focus-visible:ring-indigo-300/60",
+                            ? "text-amber-500 hover:text-amber-600"
+                            : "text-slate-300 hover:bg-slate-200 hover:text-slate-600",
                         ].join(" ")}
                         aria-pressed={a.isPinned ? "true" : "false"}
                         aria-label={a.isPinned ? "Unpin action record" : "Pin action record"}
                       >
-                        <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden>
-                          <path
-                            d="M5 2.5h5v1.2l-1.1 1v3.1l1.5 1.5H4.6l1.5-1.5V4.7L5 3.7V2.5zm2.5 6.8v3.2"
-                            stroke="currentColor"
-                            strokeWidth="1.4"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
+                        <Pin className="h-4 w-4" aria-hidden />
                       </button>
                     </td>
-                    <td className="min-w-[240px] pr-4 text-left py-3.5 align-middle">
-                      <span className="block text-sm font-semibold text-slate-800 whitespace-nowrap">
-                        {a.area ?? "—"}
-                      </span>
+                    <td className="w-[220px] px-2 py-3.5 text-left align-middle">
+                      <span className="text-sm font-medium text-slate-900 whitespace-nowrap">{a.area ?? "—"}</span>
                     </td>
-                    <td className="min-w-[200px] px-4 text-left py-3.5 align-middle text-sm text-slate-600">
+                    <td className="w-[220px] px-2 py-3.5 text-left align-middle text-sm text-slate-700 max-w-0">
                       <button
                         type="button"
                         onClick={() =>
@@ -310,22 +428,22 @@ export default function ActionTracker({ actions, currentCycle }: ActionTrackerPr
                             note: a.notes || "—",
                           })
                         }
-                        className="group block w-full truncate text-left text-sm text-slate-600 cursor-pointer hover:text-indigo-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300/50 rounded-sm transition-colors"
+                        className="group block w-full truncate text-left text-sm text-indigo-600 cursor-pointer hover:text-indigo-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300/50 rounded-sm transition-colors"
                         title={a.suggestedAction}
                       >
                         <span className="underline-offset-2 group-hover:underline">{a.suggestedAction}</span>
                       </button>
                     </td>
-                    <td className="w-[100px] min-w-[100px] px-1 py-3.5 align-middle text-sm text-slate-600 font-medium">
-                      {a.owner}
+                    <td className="w-[190px] px-2 py-3.5 align-middle text-sm text-slate-700 max-w-0">
+                      <span className="block truncate" title={a.owner}>{a.owner}</span>
                     </td>
-                    <td className="w-[112px] min-w-[112px] px-1 text-left py-3.5 align-middle">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${badge.bg} ${badge.text}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${badge.dot}`} />
+                    <td className="w-[140px] px-2 py-3.5 text-left align-middle">
+                      <span className="inline-flex items-center gap-2 text-sm text-slate-700 whitespace-nowrap">
+                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusDot[a.status]}`} />
                         {a.status}
                       </span>
                     </td>
-                    <td className="flex-1 min-w-[320px] px-4 text-left py-3.5 align-middle">
+                    <td className="w-[190px] px-2 text-left py-3.5 align-middle max-w-0">
                       {a.notes ? (
                         <button
                           type="button"
@@ -345,27 +463,23 @@ export default function ActionTracker({ actions, currentCycle }: ActionTrackerPr
                         <span className="text-xs text-slate-300">—</span>
                       )}
                     </td>
-                    <td className="py-3.5 align-middle">
-                      <div className="flex items-center justify-end gap-1.5">
+                    <td className="px-2 py-3.5 align-middle">
+                      <div className="flex items-center justify-center gap-2">
                         <button
                           type="button"
                           title="Edit"
                           onClick={() => handleEdit(row.isLocal, a, row.localIdx)}
-                          className="p-2 rounded-md text-slate-400 border border-slate-200 bg-white hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 transition-all"
+                          className="rounded p-2 hover:bg-slate-200 transition-colors"
                         >
-                          <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden>
-                            <path d="M11 2l2 2-8 8H3v-2l8-8z" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
+                          <Edit2 className="h-4 w-4 text-slate-600" aria-hidden />
                         </button>
                         <button
                           type="button"
                           title="Delete"
                           onClick={() => requestDelete(row.isLocal, a, row.localIdx)}
-                          className="p-2 rounded-md text-rose-400 border border-rose-200 bg-white hover:bg-rose-50 hover:border-rose-300 transition-all"
+                          className="rounded p-2 hover:bg-red-100 transition-colors"
                         >
-                          <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden>
-                            <path d="M2.5 4.5h10M6 4.5V3h3v1.5M11.5 4.5l-.8 8H4.3l-.8-8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
+                          <Trash2 className="h-4 w-4 text-red-600" aria-hidden />
                         </button>
                       </div>
                     </td>

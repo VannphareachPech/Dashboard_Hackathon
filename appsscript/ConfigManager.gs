@@ -25,12 +25,24 @@ function readSettings() {
   if (!sheet) return result;
   const values = sheet.getDataRange().getValues();
   values.forEach(function(row) {
-    const label = safeText_(row[0]).toLowerCase();
-    const value = safeText_(row[1]);
-    if (label === "current cycle") result.currentCycle = value;
-    if (label === "min responses to send") result.minResponses = parseInt(value, 10) || PULSE_CONFIG.MIN_RESPONSES_DEFAULT;
-    if (label === "send to slack approved") result.sendApproved = value.toLowerCase() === "true";
-    if (label === "form response sheet name") result.formSheetName = value;
+    const labelKey = normalizeLabel(row[0]);
+    const value = safeText_(getSettingRowValue_(row));
+
+    if (labelKey === "currentcycle") result.currentCycle = value;
+    if (labelKey === "minresponsestosend") result.minResponses = parseInt(value, 10) || PULSE_CONFIG.MIN_RESPONSES_DEFAULT;
+    if (labelKey === "sendtoslackapproved") result.sendApproved = value.toLowerCase() === "true";
+    if (labelKey === "formresponsesheetname") result.formSheetName = value;
+    if (labelKey === "teamsize" || labelKey === "totalteam" || labelKey === "headcount") {
+      result.teamSize = parseInt(String(value).replace(/\D/g, ""), 10) || 0;
+    }
   });
   return result;
+}
+
+function getSettingRowValue_(row) {
+  if (!row || row.length < 2) return "";
+  for (var i = 1; i < row.length; i++) {
+    if (safeText_(row[i])) return row[i];
+  }
+  return "";
 }
