@@ -11,7 +11,6 @@ import {
   Cell,
   LabelList,
   ReferenceLine,
-  TooltipProps,
 } from "recharts";
 import type { AreaScore } from "@/types/dashboard";
 
@@ -29,7 +28,7 @@ function barColor(score: number): string {
 }
 
 // Custom tooltip for hover display
-function CustomTooltip({ active, payload }: TooltipProps<number, string>) {
+function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: AreaScore }> }) {
   if (active && payload && payload.length > 0) {
     const data = payload[0].payload as AreaScore;
     if (data.score == null) return null;

@@ -128,7 +128,7 @@ export default async function DashboardPage() {
           <div id="analytics" className="mt-5 space-y-5 scroll-mt-20">
             <div className="grid grid-cols-1 gap-5 items-stretch lg:grid-cols-2">
               <Section id="participation-trend" title="Participation Trends">
-                <ResponseCountChart data={responseCounts} teamSize={summary?.teamSize} />
+                <ResponseCountChart data={responseCounts ?? []} teamSize={summary?.teamSize} />
               </Section>
 
               <Section title="Overall Sentiment Trends">
@@ -148,11 +148,11 @@ export default async function DashboardPage() {
             </Section>
 
             <Section id="response-mix" title="Sentiment">
-              <ResponseMixChart data={responseMix} />
+              <ResponseMixChart data={responseMix ?? []} />
             </Section>
 
             <Section id="role-split" title="Role Split">
-              <RoleSplitHeatmap rows={roleSplit} />
+              <RoleSplitHeatmap rows={roleSplit ?? []} />
             </Section>
           </div>
 
