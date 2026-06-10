@@ -69,7 +69,8 @@ export async function fetchDashboardData(): Promise<DashboardData | null> {
         ? Number(trends[trends.length - 1].overallScore) || 0
         : 0;
     const rawScore = Number((data.summary || {}).overallScore);
-    const resolvedScore = rawScore > 0 ? rawScore : latestTrendScore;
+    // Source of truth is latest trend point when available; fallback to summary.
+    const resolvedScore = latestTrendScore > 0 ? latestTrendScore : rawScore;
 
     if (!data.summary || !Array.isArray(data.areaScores) || data.areaScores.length === 0) {
       return null;
@@ -109,8 +110,7 @@ export async function fetchDashboardData(): Promise<DashboardData | null> {
     };
 
     const trendList = normalized.trends;
-    const latest = trendList.length > 0 ? Number(trendList[trendList.length - 1].overallScore) : 0;
-    if (trendList.length >= 2 && Math.abs(normalized.summary.overallScore - latest) <= 0.3) {
+    if (trendList.length >= 2) {
       normalized.summary.scoreDelta = +(
         trendList[trendList.length - 1].overallScore -
         trendList[trendList.length - 2].overallScore
