@@ -86,11 +86,9 @@ export default function CurrentPulseBarChart({ responseCurrentRawData }: Props) 
 
   if (chartData.length === 0) {
     return (
-      <div className="rounded-lg border border-slate-200 bg-white p-6">
-        <h3 className="text-lg font-semibold text-slate-700 mb-4">
-          Current Pulse Response Mix by Question
-        </h3>
-        <p className="text-sm text-slate-400">No response data available</p>
+      <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-slate-100 p-5">
+        <h3 className="text-lg font-semibold text-slate-700">Current Pulse Response Mix by Question</h3>
+        <p className="text-sm text-slate-400 mt-3">No response data available yet.</p>
       </div>
     );
   }
@@ -98,12 +96,12 @@ export default function CurrentPulseBarChart({ responseCurrentRawData }: Props) 
   const sampleN = responseCurrentRawData.length;
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-6">
+    <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-slate-100 p-5">
       <div className="mb-1">
         <h3 className="text-lg font-semibold text-slate-700">
           Current Pulse Response Mix by Question
         </h3>
-        <p className="text-xs text-slate-400 mt-0.5">
+        <p className="text-xs text-slate-500 mt-0.5">
           Response sentiment by area · current pulse · n={sampleN}
         </p>
       </div>

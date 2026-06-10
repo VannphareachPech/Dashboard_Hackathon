@@ -24,7 +24,12 @@ const SENTIMENT_CONFIG: Record<
 };
 
 export default function ResponseMixChart({ data }: Props) {
-  if (!data || data.length === 0) return null;
+  if (!data || data.length === 0) return (
+    <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-slate-100 p-5">
+      <h3 className="text-lg font-semibold text-slate-700">Sentiment Breakdown by Area</h3>
+      <p className="text-sm text-slate-400 mt-3">No sentiment data available yet.</p>
+    </div>
+  );
 
   const sorted = [...data].sort((a, b) => b.positive - a.positive);
   const sampleN = sorted[0]?.total ?? 0;

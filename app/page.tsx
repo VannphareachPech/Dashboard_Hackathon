@@ -126,12 +126,10 @@ export default async function DashboardPage() {
 
           <GroupDivider />
           <div id="analytics" className="mt-5 space-y-5 scroll-mt-20">
-            <div className={`grid grid-cols-1 gap-5 items-stretch ${responseCounts && responseCounts.length > 0 ? "lg:grid-cols-2" : ""}`}>
-              {responseCounts && responseCounts.length > 0 && (
-                <Section id="participation-trend" title="Participation Trends">
-                  <ResponseCountChart data={responseCounts} />
-                </Section>
-              )}
+            <div className="grid grid-cols-1 gap-5 items-stretch lg:grid-cols-2">
+              <Section id="participation-trend" title="Participation Trends">
+                <ResponseCountChart data={responseCounts} teamSize={summary?.teamSize} />
+              </Section>
 
               <Section title="Overall Sentiment Trends">
                 <TrendChart trends={trends} />
@@ -149,17 +147,13 @@ export default async function DashboardPage() {
               <ScoreChart areaScores={areaScores} />
             </Section>
 
-            {responseMix && responseMix.length > 0 && (
-              <Section id="response-mix" title="Sentiment">
-                <ResponseMixChart data={responseMix} />
-              </Section>
-            )}
+            <Section id="response-mix" title="Sentiment">
+              <ResponseMixChart data={responseMix} />
+            </Section>
 
-            {roleSplit && roleSplit.length > 0 && (
-              <Section id="role-split" title="Role Split">
-                <RoleSplitHeatmap rows={roleSplit} />
-              </Section>
-            )}
+            <Section id="role-split" title="Role Split">
+              <RoleSplitHeatmap rows={roleSplit} />
+            </Section>
           </div>
 
           <GroupDivider />
@@ -171,6 +165,7 @@ export default async function DashboardPage() {
                 areaScores={areaScores}
                 trends={trends}
                 recommendations={recommendations}
+                roleSplit={roleSplit}
               />
             </Section>
 

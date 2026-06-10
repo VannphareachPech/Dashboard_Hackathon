@@ -78,13 +78,34 @@ export default function TrendChart({ trends, events = {} }: TrendChartProps) {
     );
   }
 
+  // Latest delta: difference in overallScore between last two pulses
+  const lastDelta = trends.length >= 2
+    ? Number((trends[trends.length - 1].overallScore - trends[trends.length - 2].overallScore).toFixed(2))
+    : null;
+  const lastCycle = trends.length >= 2 ? trends[trends.length - 1].cycle : null;
+  const prevCycle = trends.length >= 2 ? trends[trends.length - 2].cycle : null;
+
   return (
-    <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-slate-100 p-5">
-      <div className="mb-4">
-        <h2 className="text-lg font-semibold text-slate-700">Overall Sentiment Trend</h2>
-        <p className="text-xs text-slate-500 mt-0.5">
-          Team-wide average score across all pulse cycles.
-        </p>
+    <div className="h-full bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-slate-100 p-5 flex flex-col">
+      <div className="mb-4 flex items-start justify-between gap-2">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-700">Overall Sentiment Trend</h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Team-wide average score across all pulse cycles.
+          </p>
+        </div>
+        {lastDelta !== null && lastCycle && prevCycle && (
+          <div className="flex flex-col items-end shrink-0">
+            <span className={`text-sm font-semibold ${
+              lastDelta > 0 ? "text-emerald-600" : lastDelta < 0 ? "text-rose-500" : "text-slate-400"
+            }`}>
+              {lastDelta > 0 ? `+${lastDelta}` : `${lastDelta}`}
+            </span>
+            <span className="text-[10px] text-slate-400 whitespace-nowrap">
+              {prevCycle} → {lastCycle}
+            </span>
+          </div>
+        )}
       </div>
 
       <ResponsiveContainer width="100%" height={260}>

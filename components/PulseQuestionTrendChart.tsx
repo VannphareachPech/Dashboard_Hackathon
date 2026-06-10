@@ -44,14 +44,14 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
   if (!active || !payload?.length) return null;
   const sorted = [...payload].sort((a, b) => b.value - a.value);
   return (
-    <div className="rounded-lg border border-gray-200 bg-white px-3 py-2.5 shadow-lg text-xs min-w-[200px]">
-      <p className="font-semibold text-gray-800 mb-2">{label}</p>
+    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 shadow-lg text-xs min-w-[200px]">
+      <p className="font-semibold text-slate-800 mb-2">{label}</p>
       <div className="flex flex-col gap-1">
         {sorted.map((p) => (
           <div key={p.dataKey} className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-1.5">
               <span className="inline-block size-2 rounded-full shrink-0" style={{ background: p.color }} />
-              <span className="text-gray-500">{p.name}</span>
+              <span className="text-slate-500">{p.name}</span>
             </div>
             <span className="font-semibold tabular-nums" style={{ color: p.value < 3.5 ? "#EF4444" : p.color }}>
               {p.value.toFixed(1)}
@@ -88,8 +88,9 @@ export default function PulseQuestionTrendChart({ trends }: Props) {
 
   if (!trends || trends.length === 0) {
     return (
-      <div className="rounded-lg border border-slate-200 bg-white p-6">
-        <p className="text-sm text-slate-400">No trend data available</p>
+      <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-slate-100 p-5">
+        <h3 className="text-lg font-semibold text-slate-700">Pulse Area Performance Over Time</h3>
+        <p className="text-sm text-slate-400 mt-3">No trend data available yet.</p>
       </div>
     );
   }
@@ -114,17 +115,18 @@ export default function PulseQuestionTrendChart({ trends }: Props) {
   const hasData = chartData.some((row) => SERIES.some(({ key }) => typeof row[key] === "number"));
   if (!hasData) {
     return (
-      <div className="rounded-lg border border-slate-200 bg-white p-6">
-        <p className="text-sm text-slate-400">No trend data available</p>
+      <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-slate-100 p-5">
+        <h3 className="text-lg font-semibold text-slate-700">Pulse Area Performance Over Time</h3>
+        <p className="text-sm text-slate-400 mt-3">No trend data available yet.</p>
       </div>
     );
   }
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-5 flex flex-col gap-4">
+    <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-slate-100 p-5 flex flex-col gap-4">
       <div>
         <h2 className="text-lg font-semibold text-slate-700">Pulse Area Performance Over Time</h2>
-        <p className="mt-1 text-xs text-slate-500">
+        <p className="text-xs text-slate-500 mt-0.5">
           How each engagement area has trended across cycles — scores below 3.5 flagged in red.
         </p>
       </div>
@@ -189,7 +191,7 @@ export default function PulseQuestionTrendChart({ trends }: Props) {
         </LineChart>
       </ResponsiveContainer>
 
-      <p className="text-[11px] text-gray-400 -mt-2">
+      <p className="text-xs text-slate-400 -mt-2">
         Dots in <span className="text-red-400 font-medium">red</span> indicate a score below the 3.5 target. Hover a label above to isolate a series.
       </p>
     </div>

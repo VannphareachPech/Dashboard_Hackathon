@@ -6,7 +6,8 @@ interface Props {
 }
 
 // Pill color classes: bg + text + hover ring
-function pillColor(score: number): string {
+function pillColor(score: number | undefined): string {
+  if (score == null || isNaN(score)) return "bg-slate-50 text-slate-400 ring-slate-200";
   if (score >= 4.0) return "bg-emerald-50 text-emerald-700 ring-emerald-200 group-hover:bg-emerald-100 group-hover:ring-emerald-300";
   if (score >= 3.5) return "bg-sky-50 text-sky-700 ring-sky-200 group-hover:bg-sky-100 group-hover:ring-sky-300";
   if (score >= 3.0) return "bg-amber-50 text-amber-700 ring-amber-200 group-hover:bg-amber-100 group-hover:ring-amber-300";
@@ -22,7 +23,12 @@ function gapStyle(gap: number): string {
 }
 
 export default function RoleSplitHeatmap({ rows }: Props) {
-  if (!rows || rows.length === 0) return null;
+  if (!rows || rows.length === 0) return (
+    <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-slate-100 p-5">
+      <h3 className="text-lg font-semibold text-slate-700">Score by Role Group</h3>
+      <p className="text-sm text-slate-400 mt-3">No role split data available yet.</p>
+    </div>
+  );
 
   const groups = Object.keys(rows[0].scores);
 
