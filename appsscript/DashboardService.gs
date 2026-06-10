@@ -38,6 +38,7 @@ var SHEET_SETTINGS        = "Settings";
 var SHEET_ACTIONS         = "Action Tracker";
 var SHEET_ROLE_SPLIT      = "Role Split";      // optional: per-area scores by role group
 var SHEET_ROLE_SPLIT_SUMMARY = "Role Split Summary";
+var SHEET_AI_INSIGHTS     = "AI Insights";
 
 // ── Default thresholds (overridden by Settings sheet if present) ─────────────
 var DEFAULT_THRESHOLD_STRONG = 4.0;
@@ -100,8 +101,27 @@ function setSendToSlackApproved_(approved) {
 }
 
 // ── Main endpoint ─────────────────────────────────────────────────────────────
-function doGet() {
+function doGet(e) {
   try {
+    var action = String((e && e.parameter && e.parameter.action) || "").trim();
+    if (action === "getAiInsight") {
+      var cycleParam = String((e && e.parameter && e.parameter.cycle) || "").trim();
+      if (typeof getAiInsightResponse_ !== "function") {
+        return ContentService
+          .createTextOutput(JSON.stringify({
+            found: false,
+            cycle: cycleParam,
+            summary: "",
+            rows: [],
+            message: "AI insight helper unavailable"
+          }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+      return ContentService
+        .createTextOutput(JSON.stringify(getAiInsightResponse_(cycleParam)))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     var validation = validateSheets();
     if (!validation.ok) {
       return ContentService
@@ -237,18 +257,27 @@ function getDashboardCycle(ss, trends) {
 }
 
 function getGeneratedDate() {
-  return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
+  return formatNow_("yyyy-MM-dd");
 }
 
 // ── Summary ───────────────────────────────────────────────────────────────────
 function getSummary(ss, thresholds, trends) {
   var map = getSheetAsMap(ss.getSheetByName(SHEET_SUMMARY));
+  var settingsMap = getSheetAsMap(ss.getSheetByName(SHEET_SETTINGS));
 
   var totalResponses = Number(map["totalresponses"] || map["totalresponse"] || map["responsestotal"]) || 0;
-  var teamSize       = Number(map["teamsize"] || map["totalteam"] || map["headcount"]) || 0;
+  var teamSize       = Number(settingsMap["teamsize"] || settingsMap["totalteam"] || settingsMap["headcount"]) || 0;
   var overallScore   = parseFloat(map["overallscore"] || map["averagescore"]) || 0;
   var highestArea    = String(map["highestarea"] || map["toparea"] || "");
   var lowestArea     = String(map["lowestarea"] || map["bottomarea"] || "");
+
+  // Override with latest Trend's overall score (current pulse, not Summary's static value)
+  if (trends && trends.length > 0) {
+    var latestTrendScore = parseFloat(trends[trends.length - 1].overallScore);
+    if (!isNaN(latestTrendScore) && latestTrendScore > 0) {
+      overallScore = latestTrendScore;
+    }
+  }
 
   // Re-derive totalResponses from Form Responses filtered by active cycle.
   // The Summary sheet value is an all-time total; we need only the current pulse count.
@@ -537,276 +566,25 @@ function archiveCurrentCycleTrend() {
 
 // ── Role Split ────────────────────────────────────────────────────────────────
 /**
- * Computes per-area average scores broken down by role group.
- * Reads directly from the Form Responses sheet — no separate Role Split sheet needed.
- *
- * Expected Form Responses layout:
- *   Col A  = Timestamp
- *   Col B  = Role (e.g. "Product Management", "Product Development", "Shared")
- *   Col C–I = One column per survey area (numeric score 1–5), header = area name
- *
- * Falls back to a manual "Role Split" sheet if it exists (for overrides).
+ * Gets role split data using fallback strategy.
+ * Delegates to RoleSplitService for computation and caching logic.
+ * @deprecated Use getRoleSplitWithFallback() from RoleSplitService.gs instead
  */
 function getRoleSplit(ss) {
-  // Prefer Role Split Summary (your workbook's populated tab)
-  var summaryOverride = ss.getSheetByName(SHEET_ROLE_SPLIT_SUMMARY);
-  if (summaryOverride && summaryOverride.getLastRow() > 1) {
-    var summaryRows = getRoleSplitFromSheet_(summaryOverride);
-    if (summaryRows.length) return summaryRows;
-  }
-
-  // Fall back to Role Split override only when it has role columns
-  var overrideSheet = ss.getSheetByName(SHEET_ROLE_SPLIT);
-  if (overrideSheet && overrideSheet.getLastRow() > 1 && hasUsableRoleColumns_(overrideSheet)) {
-    var overrideRows = getRoleSplitFromSheet_(overrideSheet);
-    if (overrideRows.length) return overrideRows;
-  }
-
-  // Compute from raw form responses
-  var settings  = typeof readSettings === "function" ? readSettings() : {};
-  var sheetName = settings.formSheetName || PULSE_CONFIG.FORM_RESPONSE_SHEET;
-  var sheet     = ss.getSheetByName(sheetName);
-  if (!sheet || sheet.getLastRow() < 2) return [];
-
-  var data    = sheet.getDataRange().getValues();
-  var headers = data[0]; // row 1
-
-  // Detect role and cycle columns from headers
-  var roleCol  = 1;  // default col B
-  var cycleCol = -1;
-  // Use Trend-first cycle so label stays in sync with getDashboardCycle().
-  var roleSplitTrends = getTrends(ss);
-  var activeCycle = (roleSplitTrends.length > 0)
-    ? String(roleSplitTrends[roleSplitTrends.length - 1].cycle || "").trim()
+  var trends = getTrends(ss);
+  var activeCycle = (trends.length > 0)
+    ? String(trends[trends.length - 1].cycle || "").trim()
     : getCycle(ss);
-  for (var hc = 0; hc < headers.length; hc++) {
-    var hn = normalizeLabel(headers[hc]);
-    if (hn === "pulsecycle" || hn === "cycle") cycleCol = hc;
-    if (hn.indexOf("primaryrole") !== -1 || hn.indexOf("functionbestdescribes") !== -1 || hn === "role") {
-      roleCol = hc;
+  if (typeof getRoleSplitWithFallback === "function") {
+    try {
+      return getRoleSplitWithFallback(ss, activeCycle);
+    } catch (e) {
+      Logger.log("Role split fallback failed: " + e.message);
+      return [];
     }
   }
-
-  // Build area column list from canonical area names, matching long question headers too
-  var areaCols = [];
-  for (var ai = 0; ai < AREA_NAMES.length; ai++) {
-    var area = AREA_NAMES[ai];
-    var areaNorm = normalizeLabel(area);
-    var found = -1;
-    for (var c = 0; c < headers.length; c++) {
-      var hNorm = normalizeLabel(headers[c]);
-      if (hNorm && (hNorm === areaNorm || hNorm.indexOf(areaNorm) !== -1)) {
-        found = c;
-        break;
-      }
-    }
-    if (found >= 0) areaCols.push({ area: area, col: found });
-  }
-  if (!areaCols.length) return [];
-
-  // Accumulate sum + count per role + area
-  var acc = {}; // acc[role][areaName] = { sum, count }
-  for (var i = 1; i < data.length; i++) {
-    if (cycleCol >= 0 && activeCycle) {
-      var rowCycle = String(data[i][cycleCol] || "").trim();
-      if (rowCycle && rowCycle !== activeCycle) continue;
-    }
-
-    var role = String(data[i][roleCol] || "").trim();
-    if (!role) continue;
-    if (!acc[role]) acc[role] = {};
-
-    for (var a = 0; a < areaCols.length; a++) {
-      var col   = areaCols[a].col;
-      var area  = areaCols[a].area;
-      var score = mapPulseValueToScore_(data[i][col]);
-      if (score === null) continue;
-      if (!acc[role][area]) acc[role][area] = { sum: 0, count: 0 };
-      acc[role][area].sum   += score;
-      acc[role][area].count += 1;
-    }
-  }
-
-  var roles = Object.keys(acc);
-  if (!roles.length) return [];
-
-  // Build output: one row per area
-  var result = [];
-  for (var aj = 0; aj < areaCols.length; aj++) {
-    var areaName = areaCols[aj].area;
-    var scores   = {};
-    var vals     = [];
-
-    for (var ri = 0; ri < roles.length; ri++) {
-      var r = roles[ri];
-      if (acc[r][areaName] && acc[r][areaName].count > 0) {
-        var avg = Math.round((acc[r][areaName].sum / acc[r][areaName].count) * 10) / 10;
-        scores[r] = avg;
-        vals.push(avg);
-      }
-    }
-
-    var roleGap = vals.length >= 2
-      ? Math.round((Math.max.apply(null, vals) - Math.min.apply(null, vals)) * 10) / 10
-      : 0;
-
-    result.push({ area: areaName, scores: scores, roleGap: roleGap });
-  }
-  return result;
-}
-
-/** Helper: read role split from a manual override sheet (same format as before) */
-function getRoleSplitFromSheet_(sheet) {
-  var data = sheet.getDataRange().getValues();
-  if (data.length < 2) return [];
-  var headers = data[0];
-  var gapHeaderCol = -1;
-  for (var h = 0; h < headers.length; h++) {
-    if (normalizeLabel(headers[h]) === "rolegap") {
-      gapHeaderCol = h;
-      break;
-    }
-  }
-  var rows = [];
-  for (var i = 1; i < data.length; i++) {
-    var area = String(data[i][0]).trim();
-    if (!area) continue;
-    var scores = {};
-    var vals = [];
-    for (var c = 1; c < headers.length; c++) {
-      if (c === gapHeaderCol) continue;
-      var group = String(headers[c]).trim();
-      var val   = parseFloat(data[i][c]);
-      if (group && !isNaN(val)) { scores[group] = val; vals.push(val); }
-    }
-    var roleGap = (gapHeaderCol >= 0)
-      ? (parseFloat(data[i][gapHeaderCol]) || 0)
-      : (vals.length >= 2
-        ? Math.round((Math.max.apply(null, vals) - Math.min.apply(null, vals)) * 10) / 10
-        : 0);
-
-    // Normalize long question labels to canonical area names where possible
-    var areaNorm = normalizeLabel(area);
-    for (var a = 0; a < AREA_NAMES.length; a++) {
-      var canonical = AREA_NAMES[a];
-      var canonicalNorm = normalizeLabel(canonical);
-      if (areaNorm === canonicalNorm || areaNorm.indexOf(canonicalNorm) !== -1) {
-        area = canonical;
-        break;
-      }
-    }
-
-    if (Object.keys(scores).length === 0) continue;
-    rows.push({ area: area, scores: scores, roleGap: roleGap });
-  }
-  return rows;
-}
-
-function hasUsableRoleColumns_(sheet) {
-  var headers = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).getValues()[0] || [];
-  var count = 0;
-  for (var c = 1; c < headers.length; c++) {
-    var h = normalizeLabel(headers[c]);
-    if (!h || h === "rolegap") continue;
-    count++;
-  }
-  return count >= 2;
-}
-
-/**
- * Writes computed role split results to the "Role Split" sheet.
- * Called from generateLeadershipSummary() after each pipeline run.
- * Creates the sheet if it doesn't exist. Overwrites previous results.
- *
- * Output layout:
- *   Row 1: Survey Area | RoleA | RoleB | ... | Role Gap
- *   Row 2+: one row per area
- */
-function writeRoleSplitToSheet_(ss) {
-  var rows = getRoleSplit(ss);
-  if (!rows || !rows.length) {
-    Logger.log("Role split: no data to write.");
-    return;
-  }
-
-  var sheet = getOrCreateSheet_(ss, SHEET_ROLE_SPLIT);
-  sheet.clear();
-
-  // Fixed column order: Product Management → Product Development → Shared
-  // Falls back to whatever role groups exist if those exact names are absent.
-  var preferredOrder = ["Product Management", "Product Development", "Shared"];
-  var availableGroups = Object.keys(rows[0].scores);
-  var ordered = preferredOrder.filter(function(g) { return availableGroups.indexOf(g) !== -1; });
-  var rest    = availableGroups.filter(function(g) { return ordered.indexOf(g) === -1; });
-  var groups  = ordered.concat(rest);
-
-  // Header row
-  var header = ["Survey Area"].concat(groups).concat(["Role Gap"]);
-  sheet.appendRow(header);
-  sheet.getRange(1, 1, 1, header.length)
-    .setBackground("#1a73e8")
-    .setFontColor("#ffffff")
-    .setFontWeight("bold");
-
-  // Data rows
-  for (var i = 0; i < rows.length; i++) {
-    var row = rows[i];
-    var dataRow = [row.area];
-    for (var g = 0; g < groups.length; g++) {
-      var score = row.scores[groups[g]];
-      dataRow.push(score !== undefined ? score : "");
-    }
-    dataRow.push(row.roleGap);
-    sheet.appendRow(dataRow);
-  }
-
-  // Apply color formatting to score + gap cells
-  var numDataRows = rows.length;
-  var numCols     = header.length;
-
-  for (var r = 0; r < numDataRows; r++) {
-    var sheetRow = r + 2; // 1-indexed, skip header
-
-    // Score columns (skip col A = area name)
-    for (var c = 1; c < groups.length + 1; c++) {
-      var val = rows[r].scores[groups[c - 1]];
-      if (val === undefined || val === "") continue;
-      var bg = val >= 4.0 ? "#d4edda"   // green
-             : val >= 3.5 ? "#e8f5e9"   // light green
-             : val >= 3.0 ? "#fff3cd"   // amber
-             :              "#f8d7da";  // rose
-      sheet.getRange(sheetRow, c + 1).setBackground(bg);
-    }
-
-    // Role gap column
-    var gapCol = groups.length + 2;
-    var gap    = rows[r].roleGap;
-    var gapBg  = gap >= 0.7 ? "#ffe0b2"   // orange
-               : gap >= 0.5 ? "#fff3cd"   // amber
-               :              "#f8f9fa";  // neutral
-    sheet.getRange(sheetRow, gapCol).setBackground(gapBg);
-  }
-
-  // Column widths
-  sheet.setColumnWidth(1, 240);
-  for (var cw = 2; cw <= header.length; cw++) {
-    sheet.setColumnWidth(cw, 160);
-  }
-
-  sheet.setFrozenRows(1);
-
-  // Roboto font, centered numbers
-  var totalRows = numDataRows + 1;
-  var numCols   = header.length;
-  var fullRange = sheet.getRange(1, 1, totalRows, numCols);
-  fullRange.setFontFamily("Roboto")
-           .setFontSize(12)
-           .setVerticalAlignment("middle");
-  if (numCols > 1) {
-    sheet.getRange(1, 2, totalRows, numCols - 1).setHorizontalAlignment("center");
-  }
-
-  Logger.log("Role Split sheet updated with locked column order & Roboto styling.");
+  Logger.log("Role split helper unavailable; returning empty role split.");
+  return [];
 }
 
 // ── Response Counts ───────────────────────────────────────────────────────────
@@ -1110,4 +888,207 @@ function getSheetAsMap(sheet) {
 
 function normalizeLabel(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function getAiInsightResponse_(cycleParam) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var targetCycle = safeText_(cycleParam);
+
+  // Prefer cycle-level persistence sheet, then fallback to AI output log.
+  var primary = ss.getSheetByName(SHEET_AI_INSIGHTS);
+  var fallback = ss.getSheetByName(PULSE_CONFIG.AI_OUTPUT_SHEET);
+  var sheet = primary || fallback;
+
+  if (!sheet || sheet.getLastRow() < 2) {
+    return {
+      found: false,
+      cycle: targetCycle || "",
+      summary: "",
+      rows: [],
+      message: "No AI insight available"
+    };
+  }
+
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0] || [];
+  var cycleCol = 0;
+  var summaryCol = -1;
+  var rowsCol = -1;
+  var fingerprintCol = -1;
+  var generatedByCol = -1;
+  var updatedAtCol = -1;
+
+  for (var h = 0; h < headers.length; h++) {
+    var hn = normalizeLabel(headers[h]);
+    if (hn === "cycle" || hn === "pulsecycle") cycleCol = h;
+    if (hn === "summary" || hn === "insightsummary" || hn === "aithemeanalysishumanreviewrequired") summaryCol = h;
+    if (hn === "rowsjson" || hn === "rows") rowsCol = h;
+    if (hn === "datafingerprint") fingerprintCol = h;
+    if (hn === "generatedby") generatedByCol = h;
+    if (hn === "updatedat" || hn === "generatedat") updatedAtCol = h;
+  }
+
+  // If the sheet is AI Insights Log format, summary is usually col 3.
+  if (summaryCol < 0 && headers.length >= 3) summaryCol = 2;
+
+  var bestRow = null;
+  for (var r = data.length - 1; r >= 1; r--) {
+    var rowCycle = safeText_(data[r][cycleCol]);
+    if (!rowCycle) continue;
+    if (targetCycle && rowCycle !== targetCycle) continue;
+    bestRow = data[r];
+    break;
+  }
+
+  if (!bestRow) {
+    return {
+      found: false,
+      cycle: targetCycle || "",
+      summary: "",
+      rows: [],
+      message: "No AI insight found for requested cycle"
+    };
+  }
+
+  var parsedRows = [];
+  if (rowsCol >= 0 && safeText_(bestRow[rowsCol])) {
+    try {
+      parsedRows = JSON.parse(String(bestRow[rowsCol]));
+      if (!Array.isArray(parsedRows)) parsedRows = [];
+    } catch (e) {
+      parsedRows = [];
+    }
+  }
+
+  return {
+    found: true,
+    cycle: safeText_(bestRow[cycleCol]),
+    summary: summaryCol >= 0 ? safeText_(bestRow[summaryCol]) : "",
+    rows: parsedRows,
+    dataFingerprint: fingerprintCol >= 0 ? safeText_(bestRow[fingerprintCol]) : "",
+    generatedBy: generatedByCol >= 0 ? safeText_(bestRow[generatedByCol]) : "",
+    updatedAt: updatedAtCol >= 0 ? safeText_(bestRow[updatedAtCol]) : ""
+  };
+}
+
+function stringifyRowsForCell_(rows) {
+  var text = "[]";
+  try {
+    text = JSON.stringify(Array.isArray(rows) ? rows : []);
+  } catch (e) {
+    text = "[]";
+  }
+
+  // Keep comfortably below 50k cell text limit.
+  if (text.length > 45000) {
+    return text.substring(0, 44980) + "...";
+  }
+  return text;
+}
+
+// ── AI Insights persistence (sheet-backed, one active record per cycle) ─────
+function doPost(e) {
+  try {
+    var payload = {};
+    if (e && e.postData && e.postData.contents) {
+      payload = JSON.parse(e.postData.contents);
+    }
+
+    var action = String(payload.action || "").trim();
+    if (action === "upsertAiInsight") {
+      var cycle = String(payload.cycle || "").trim();
+      var summary = String(payload.summary || "").trim();
+      var rows = Array.isArray(payload.rows) ? payload.rows : [];
+      var dataFingerprint = String(payload.dataFingerprint || "").trim();
+      var generatedBy = String(payload.generatedBy || "Dashboard UI").trim();
+      var force = Boolean(payload.force);
+
+      if (!cycle) {
+        throw new Error("Missing required field: cycle");
+      }
+
+      var ss = SpreadsheetApp.getActiveSpreadsheet();
+      var sheet = getOrCreateSheet_(ss, SHEET_AI_INSIGHTS);
+      if (sheet.getLastRow() === 0) {
+        sheet.appendRow(["Cycle", "Summary", "RowsJson", "DataFingerprint", "GeneratedBy", "UpdatedAt", "Active"]);
+        sheet.getRange(1, 1, 1, 7).setFontWeight("bold");
+      }
+
+      var values = sheet.getDataRange().getValues();
+      var headers = values[0] || [];
+      var cycleCol = 0, summaryCol = 1, rowsCol = 2, fpCol = 3, byCol = 4, atCol = 5, activeCol = 6;
+
+      for (var hc = 0; hc < headers.length; hc++) {
+        var hNorm = normalizeLabel(headers[hc]);
+        if (hNorm === "cycle") cycleCol = hc;
+        if (hNorm === "summary" || hNorm === "insightsummary") summaryCol = hc;
+        if (hNorm === "rowsjson" || hNorm === "rows") rowsCol = hc;
+        if (hNorm === "datafingerprint") fpCol = hc;
+        if (hNorm === "generatedby") byCol = hc;
+        if (hNorm === "updatedat" || hNorm === "generatedat") atCol = hc;
+        if (hNorm === "active") activeCol = hc;
+      }
+
+      var existingRow = -1;
+      for (var i = 1; i < values.length; i++) {
+        if (safeText_(values[i][cycleCol]) === cycle) {
+          existingRow = i + 1;
+          break;
+        }
+      }
+
+      var existingFingerprint = "";
+      if (existingRow > 0) {
+        existingFingerprint = safeText_(sheet.getRange(existingRow, fpCol + 1).getValue());
+      }
+
+      if (!force && dataFingerprint && existingFingerprint && existingFingerprint === dataFingerprint) {
+        return ContentService
+          .createTextOutput(JSON.stringify({ success: true, cycle: cycle, updated: false, reason: "unchanged" }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+
+      var now = formatNow_(PULSE_CONFIG.DATE_FORMAT);
+      var rowValues = new Array(Math.max(headers.length, 7));
+      for (var z = 0; z < rowValues.length; z++) rowValues[z] = "";
+      rowValues[cycleCol] = cycle;
+      rowValues[summaryCol] = summary;
+      rowValues[rowsCol] = stringifyRowsForCell_(rows);
+      rowValues[fpCol] = dataFingerprint;
+      rowValues[byCol] = generatedBy;
+      rowValues[atCol] = now;
+      rowValues[activeCol] = "TRUE";
+
+      if (existingRow > 0) {
+        sheet.getRange(existingRow, 1, 1, rowValues.length).setValues([rowValues]);
+      } else {
+        sheet.appendRow(rowValues);
+        existingRow = sheet.getLastRow();
+      }
+
+      // Ensure only the latest row for this cycle is active.
+      var lastRow = sheet.getLastRow();
+      if (lastRow >= 2) {
+        var cycleValues = sheet.getRange(2, cycleCol + 1, lastRow - 1, 1).getValues();
+        for (var rr = 0; rr < cycleValues.length; rr++) {
+          var rowIndex = rr + 2;
+          if (safeText_(cycleValues[rr][0]) === cycle) {
+            sheet.getRange(rowIndex, activeCol + 1).setValue(rowIndex === existingRow ? "TRUE" : "FALSE");
+          }
+        }
+      }
+
+      return ContentService
+        .createTextOutput(JSON.stringify({ success: true, cycle: cycle, updated: true, row: existingRow }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    return ContentService
+      .createTextOutput(JSON.stringify({ error: true, message: "Unknown action" }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (e) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ error: true, message: e.message }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
 }

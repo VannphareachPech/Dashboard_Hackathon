@@ -1,3 +1,13 @@
+/**
+ * Sends leadership summary to Slack if conditions are met.
+ * 
+ * Checks:
+ *   1. sendApproved flag is TRUE in Settings
+ *   2. Response count meets minimum threshold
+ *   3. Data hasn't already been sent (hash dedup)
+ * 
+ * Sends via Slack webhook (supports both Incoming Webhooks and Workflow triggers).
+ */
 function sendLeadershipSummaryToSlack() {
   const settings = readSettings();
 
@@ -10,9 +20,9 @@ function sendLeadershipSummaryToSlack() {
   if (!webhookUrl) throw new Error("Missing SLACK_WEBHOOK_URL in Script Properties.");
   const dashboardUrl = PropertiesService.getScriptProperties().getProperty(PULSE_CONFIG.DASHBOARD_URL_PROPERTY_KEY);
 
-  const rows = readScoreRows();
-  const metrics = readKeyMetrics();
-  const classified = classifyRows(rows);
+  const rows = getSlackScoreRows_();
+  const metrics = getSlackKeyMetrics_(rows, settings);
+  const classified = classifySlackRows_(rows);
 
   const totalResponses = parseInt(String(metrics.totalResponses || "0").replace(/\D/g, ""), 10);
   const minRequired = settings.minResponses || PULSE_CONFIG.MIN_RESPONSES_DEFAULT;
@@ -32,7 +42,7 @@ function sendLeadershipSummaryToSlack() {
   const highestArea = metrics.highestArea || extremes.highestArea || "Not available";
 
   const focus = buildSlackFocus_(lowestArea, classified);
-  const now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), PULSE_CONFIG.DATE_FORMAT);
+  const now = formatNow_(PULSE_CONFIG.DATE_FORMAT);
 
   // Hash only key fields so same-day re-runs with same data are skipped
   const currentHash = hashText_(cycle + String(totalResponses) + lowestArea + highestArea + now.substring(0, 10));
@@ -60,6 +70,104 @@ function sendLeadershipSummaryToSlack() {
   resetApprovalFlag_();
 
   Logger.log("Sent to Slack for cycle: " + cycle);
+}
+
+function getSlackScoreRows_() {
+  // Prefer shared helper when available.
+  if (typeof readScoreRows === "function") {
+    try {
+      return readScoreRows();
+    } catch (e) {
+      Logger.log("Slack fallback: readScoreRows failed: " + e.message);
+    }
+  }
+
+  // Local fallback: read canonical area scores from Summary sheet.
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(PULSE_CONFIG.SUMMARY_SHEET);
+  if (!sheet || sheet.getLastRow() < PULSE_CONFIG.SCORE_DATA_START_ROW) return [];
+
+  var rowCount = sheet.getLastRow() - PULSE_CONFIG.SCORE_DATA_START_ROW + 1;
+  var values = sheet
+    .getRange(PULSE_CONFIG.SCORE_DATA_START_ROW, PULSE_CONFIG.AREA_COL, rowCount, PULSE_CONFIG.STATUS_COL)
+    .getDisplayValues();
+
+  var validAreas = (typeof AREA_NAMES !== "undefined" && AREA_NAMES.length) ? AREA_NAMES : [];
+  var rows = [];
+  for (var i = 0; i < values.length; i++) {
+    var area = safeText_(values[i][0]);
+    if (!area) continue;
+    if (validAreas.length && validAreas.indexOf(area) === -1) continue;
+
+    var score = parseScore_(values[i][1]);
+    var status = normalizeStatus_(values[i][2]) || inferStatusFromScore_(score);
+    rows.push({ area: area, score: score, status: status });
+  }
+  return rows;
+}
+
+function getSlackKeyMetrics_(rows, settings) {
+  // Prefer shared helper when available.
+  if (typeof readKeyMetrics === "function") {
+    try {
+      return readKeyMetrics();
+    } catch (e) {
+      Logger.log("Slack fallback: readKeyMetrics failed: " + e.message);
+    }
+  }
+
+  var result = { lowestArea: "", highestArea: "", totalResponses: 0 };
+  var extremes = computeExtremes_(rows || []);
+  result.lowestArea = extremes.lowestArea || "";
+  result.highestArea = extremes.highestArea || "";
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var formSheetName = (settings && settings.formSheetName) || PULSE_CONFIG.FORM_RESPONSE_SHEET;
+  var formSheet = ss.getSheetByName(formSheetName);
+  if (!formSheet || formSheet.getLastRow() < 2) return result;
+
+  var data = formSheet.getDataRange().getValues();
+  var headers = data[0] || [];
+  var cycleCol = -1;
+  for (var c = 0; c < headers.length; c++) {
+    var hn = normalizeLabel(headers[c]);
+    if (hn === "pulsecycle" || hn === "cycle") {
+      cycleCol = c;
+      break;
+    }
+  }
+
+  var count = 0;
+  var activeCycle = (settings && settings.currentCycle) ? safeText_(settings.currentCycle) : "";
+  for (var r = 1; r < data.length; r++) {
+    if (cycleCol >= 0 && activeCycle) {
+      if (safeText_(data[r][cycleCol]) === activeCycle) count++;
+    } else {
+      count++;
+    }
+  }
+  result.totalResponses = String(count);
+  return result;
+}
+
+function classifySlackRows_(rows) {
+  // Prefer shared helper when available.
+  if (typeof classifyRows === "function") {
+    try {
+      return classifyRows(rows || []);
+    } catch (e) {
+      Logger.log("Slack fallback: classifyRows failed: " + e.message);
+    }
+  }
+
+  var positive = [], mixed = [], concern = [];
+  (rows || []).forEach(function(row) {
+    var label = row.area + " (" + (isFinite(row.score) ? row.score.toFixed(2) : "n/a") + ")";
+    if (row.status === "Concern") concern.push(label);
+    else if (row.status === "Mixed") mixed.push(label);
+    else positive.push(label);
+  });
+  return { positiveAreas: positive, mixedAreas: mixed, concernAreas: concern };
 }
 
 function buildSlackFocus_(lowestArea, classified) {

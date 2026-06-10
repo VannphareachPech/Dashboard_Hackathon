@@ -2,19 +2,28 @@
 // 2026-06-05 — Initial hackathon build
 
 function generateLeadershipSummary() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var settings = readSettings();
+  
+  // Validate inputs early
+  try {
+    validatePipelineInputs(ss, settings);
+  } catch (e) {
+    Logger.log("Validation failed: " + e.message);
+    throw e;
+  }
+
   var rows = readScoreRows();
   var metrics = readKeyMetrics();
   var classified = classifyRows(rows);
-  var settings = readSettings();
 
   var cycle = settings.currentCycle || "Unknown Cycle";
-  var now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), PULSE_CONFIG.DATE_FORMAT);
+  var now = formatNow_(PULSE_CONFIG.DATE_FORMAT);
   var totalResponses = parseInt(String(metrics.totalResponses || "0").replace(/\D/g, ""), 10) || 0;
   var extremes = computeExtremes_(rows);
   var lowestArea = metrics.lowestArea || extremes.lowestArea || "Not available";
   var highestArea = metrics.highestArea || extremes.highestArea || "Not available";
 
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
   var output = getOrCreateSheet_(ss, PULSE_CONFIG.OUTPUT_SHEET);
   if (output.getLastRow() === 0) {
     output.appendRow(["Generated At", "Cycle", "Total Responses", "Highest Area", "Lowest Area", "Leadership Focus"]);
@@ -26,36 +35,136 @@ function generateLeadershipSummary() {
   output.appendRow([now, cycle, totalResponses, highestArea, lowestArea, focus]);
   output.getRange(output.getLastRow(), 6).setWrap(true);
 
-  // Rebuild missing historical cycles from Form Responses before current-cycle append.
-  if (typeof backfillTrendFromFormResponses_ === "function") {
-    backfillTrendFromFormResponses_(ss);
+  // Backfill historical cycles from Form Responses when available.
+  if (typeof backfillTrendFromFormResponses === "function") {
+    try {
+      backfillTrendFromFormResponses(ss);
+    } catch (e) {
+      Logger.log("Trend backfill skipped due to error: " + e.message);
+    }
+  } else {
+    Logger.log("Trend backfill skipped: backfillTrendFromFormResponses is not defined.");
   }
 
-  appendTrend(rows, classified, {
-    cycle: cycle,
-    now: now,
-    totalResponses: totalResponses,
-    highestArea: highestArea,
-    lowestArea: lowestArea,
-  });
+  // Append current trend with fallback to legacy helper.
+  if (typeof appendTrendRow === "function") {
+    try {
+      appendTrendRow(rows, AREA_NAMES, {
+        cycle: cycle,
+        now: now,
+        totalResponses: totalResponses,
+        highestArea: highestArea,
+        lowestArea: lowestArea,
+      });
+    } catch (e) {
+      Logger.log("appendTrendRow failed: " + e.message);
+      if (typeof appendTrend === "function") {
+        try {
+          appendTrend(rows, classified, {
+            cycle: cycle,
+            now: now,
+            totalResponses: totalResponses,
+            highestArea: highestArea,
+            lowestArea: lowestArea,
+          });
+          Logger.log("Trend appended using legacy appendTrend fallback.");
+        } catch (legacyErr) {
+          Logger.log("Legacy appendTrend fallback failed: " + legacyErr.message);
+          throw legacyErr;
+        }
+      } else {
+        throw e;
+      }
+    }
+  } else if (typeof appendTrend === "function") {
+    appendTrend(rows, classified, {
+      cycle: cycle,
+      now: now,
+      totalResponses: totalResponses,
+      highestArea: highestArea,
+      lowestArea: lowestArea,
+    });
+    Logger.log("Trend appended using legacy appendTrend fallback.");
+  } else {
+    throw new Error("No trend append helper available (appendTrendRow/appendTrend missing).");
+  }
 
-  // Write computed role split to the "Role Split" sheet
-  writeRoleSplitToSheet_(ss);
+  // Write computed role split when helper exists; never fail the pipeline if missing.
+  if (typeof writeRoleSplitToSheet_ === "function") {
+    try {
+      writeRoleSplitToSheet_(ss);
+    } catch (e) {
+      Logger.log("Role split write skipped due to error: " + e.message);
+    }
+  } else {
+    Logger.log("Role split write skipped: writeRoleSplitToSheet_ is not defined.");
+  }
 }
 
+/**
+ * Full pipeline: validate → leadership summary → AI insights → Slack post.
+ * Validates configuration before executing any writes.
+ * @param {Object} e - Optional trigger event
+ */
 function runFullPipeline(e) {
+  var lock = null;
   try {
-    populatePulseCycleFromSettings_(e);
-    generateLeadershipSummary();      // builds Leadership Summary tab + appends Trend
-    generateAISummary();              // calls Gemini, writes to Recommendation Themes tab
-    sendLeadershipSummaryToSlack();   // posts to Slack if approved and threshold met
+    lock = LockService.getDocumentLock();
+    if (!lock.tryLock(30000)) {
+      throw new Error("Another pipeline run is in progress. Try again in a moment.");
+    }
+
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var settings = readSettings();
+    
+    // Validate all inputs before making changes
+    validatePipelineInputs(ss, settings);
+    
+    if (typeof populatePulseCycleFromSettings_ === "function") {
+      try {
+        populatePulseCycleFromSettings_(e);
+      } catch (eCycle) {
+        Logger.log("Pulse cycle auto-population skipped due to error: " + eCycle.message);
+      }
+    } else {
+      Logger.log("Pulse cycle auto-population skipped: helper not defined.");
+    }
+
+    generateLeadershipSummary();      // builds Leadership Summary tab + appends Trend using TrendService
+
+    if (typeof generateAISummary === "function") {
+      try {
+        generateAISummary();          // calls Gemini, writes to AI Insights Log tab
+      } catch (eAi) {
+        Logger.log("AI summary step skipped due to error: " + eAi.message);
+      }
+    } else {
+      Logger.log("AI summary step skipped: generateAISummary is not defined.");
+    }
+
+    if (typeof sendLeadershipSummaryToSlack === "function") {
+      try {
+        sendLeadershipSummaryToSlack(); // posts to Slack if approved and threshold met
+      } catch (eSlack) {
+        Logger.log("Slack step skipped due to error: " + eSlack.message);
+      }
+    } else {
+      Logger.log("Slack step skipped: sendLeadershipSummaryToSlack is not defined.");
+    }
+    
+    Logger.log("Full pipeline completed successfully.");
   } catch (e) {
     Logger.log("Pipeline error: " + e.message);
+    Logger.log("Stack: " + e.stack);
     MailApp.sendEmail(
       Session.getActiveUser().getEmail(),
       "B2CSS Pulse Script Error",
-      "An error occurred:\n\n" + e.message
+      "An error occurred during pipeline execution:\n\n" + e.message + "\n\nStack:\n" + e.stack
     );
+  } finally {
+    if (lock) {
+      lock.releaseLock();
+    }
   }
 }
 

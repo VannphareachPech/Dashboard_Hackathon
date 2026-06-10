@@ -43,3 +43,21 @@ function getRequiredSheet_(ss, name) {
   if (!sheet) throw new Error("Required sheet not found: " + name);
   return sheet;
 }
+
+function getAppTimeZone_() {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (ss && typeof ss.getSpreadsheetTimeZone === "function") {
+      var tz = ss.getSpreadsheetTimeZone();
+      if (tz) return tz;
+    }
+  } catch (e) {
+    // Fall back to script timezone when spreadsheet timezone is unavailable.
+  }
+  return Session.getScriptTimeZone();
+}
+
+function formatNow_(pattern) {
+  var fmt = pattern || PULSE_CONFIG.DATE_FORMAT;
+  return Utilities.formatDate(new Date(), getAppTimeZone_(), fmt);
+}

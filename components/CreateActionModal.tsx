@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ActionItem, ActionStatus } from "@/types/dashboard";
 
 export const FOCUS_AREAS = [
@@ -68,16 +68,18 @@ export default function CreateActionModal({
       setStatusOpen(false);
       setTimeout(() => firstFieldRef.current?.focus(), 50);
     }
-  }, [open]);
+  }, [open, initialValues]);
+
+  const handleClickOutside = useCallback((e: MouseEvent) => {
+    if (focusRef.current && !focusRef.current.contains(e.target as Node)) setFocusOpen(false);
+    if (statusRef.current && !statusRef.current.contains(e.target as Node)) setStatusOpen(false);
+  }, []);
 
   useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (focusRef.current && !focusRef.current.contains(e.target as Node)) setFocusOpen(false);
-      if (statusRef.current && !statusRef.current.contains(e.target as Node)) setStatusOpen(false);
-    }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
+    if (!open) return;
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open, handleClickOutside]);
 
   useEffect(() => {
     if (!open) return;
