@@ -8,6 +8,7 @@ function sendLeadershipSummaryToSlack() {
 
   const webhookUrl = PropertiesService.getScriptProperties().getProperty(PULSE_CONFIG.WEBHOOK_PROPERTY_KEY);
   if (!webhookUrl) throw new Error("Missing SLACK_WEBHOOK_URL in Script Properties.");
+  const dashboardUrl = PropertiesService.getScriptProperties().getProperty(PULSE_CONFIG.DASHBOARD_URL_PROPERTY_KEY);
 
   const rows = readScoreRows();
   const metrics = readKeyMetrics();
@@ -49,7 +50,8 @@ function sendLeadershipSummaryToSlack() {
     lowestArea: lowestArea,
     rows: rows,
     focusText: focus,
-    generatedAt: now
+    generatedAt: now,
+    dashboardUrl: dashboardUrl
   });
 
   // Must persist AFTER successful send to avoid stuck dedupe
@@ -101,6 +103,7 @@ function buildBlockKitPayload_(data, plainText) {
 
   const scoreBlockText = truncateForSlack_(scoreLines || "No score rows available.", 2800);
   const focusText = truncateForSlack_(safeMrkdwn_(data.focusText || "No focus text available."), 2800);
+  const dashboardLine = buildDashboardLine_(data.dashboardUrl, true);
 
   return {
     text: plainText,
@@ -130,6 +133,10 @@ function buildBlockKitPayload_(data, plainText) {
         type: "section",
         text: { type: "mrkdwn", text: "*Leadership Focus*\n" + focusText }
       },
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: dashboardLine }
+        },
       {
         type: "context",
         elements: [
@@ -157,9 +164,23 @@ function buildPlainSlackText_(data) {
     "*Lowest Area:* " + (data.lowestArea || "Not available") + "\n\n" +
     "*Score by Area:*\n" + (scoreLines || "No score rows available.") + "\n\n" +
     "*Leadership Focus:*\n" + (data.focusText || "No focus text available.") + "\n\n" +
+    buildDashboardLine_(data.dashboardUrl, false) + "\n\n" +
     "_Generated: " + (data.generatedAt || "") + ". Automated summary - review before acting._";
 
   return truncateForSlack_(text, 3500);
+}
+
+function buildDashboardLine_(dashboardUrl, asMrkdwn) {
+  var url = String(dashboardUrl || "").trim();
+  if (!/^https?:\/\//i.test(url)) {
+    return asMrkdwn ? "*Dashboard:* Dashboard link not configured." : "Dashboard: Dashboard link not configured.";
+  }
+
+  if (asMrkdwn) {
+    return "*Dashboard:* <" + safeMrkdwn_(url) + "|Open Latest Dashboard>";
+  }
+
+  return "Dashboard: " + url;
 }
 
 function sendSlackJson_(webhookUrl, payloadObj, noThrow) {
