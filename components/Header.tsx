@@ -43,7 +43,7 @@ export default function Header({ cycle, generatedDate, totalResponses, teamSize,
           </h1>
         </div>
         <div className="text-left sm:text-right max-w-xl">
-          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+          <div className="flex flex-col items-start gap-2 sm:items-end">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs leading-none">
               <span className="font-medium text-slate-500">Cycle:</span>
               <span className="font-semibold text-slate-800">{cycle}</span>

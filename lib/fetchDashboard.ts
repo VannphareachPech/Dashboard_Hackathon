@@ -1,5 +1,13 @@
 import type { DashboardData, TrendPoint } from "@/types/dashboard";
 
+function scoreToOverallStatus(score: number): string {
+  // Keep UI status consistent with the displayed hero score.
+  if (score >= 4.0) return "Strong";
+  if (score >= 3.5) return "Stable";
+  if (score >= 3.0) return "Watch";
+  return "At Risk";
+}
+
 function normalizeTrendList(raw: unknown): TrendPoint[] {
   if (!Array.isArray(raw)) return [];
 
@@ -71,6 +79,7 @@ export async function fetchDashboardData(): Promise<DashboardData | null> {
     const rawScore = Number((data.summary || {}).overallScore);
     // Source of truth is latest trend point when available; fallback to summary.
     const resolvedScore = latestTrendScore > 0 ? latestTrendScore : rawScore;
+    const resolvedStatus = scoreToOverallStatus(resolvedScore);
 
     if (!data.summary || !Array.isArray(data.areaScores) || data.areaScores.length === 0) {
       return null;
@@ -84,7 +93,7 @@ export async function fetchDashboardData(): Promise<DashboardData | null> {
         totalResponses: Number((data.summary || {}).totalResponses) || 0,
         highestArea: String((data.summary || {}).highestArea || ""),
         lowestArea: String((data.summary || {}).lowestArea || ""),
-        overallStatus: String((data.summary || {}).overallStatus || ""),
+        overallStatus: resolvedStatus,
         overallScore: resolvedScore,
         teamSize: Number((data.summary || {}).teamSize) || undefined,
       },

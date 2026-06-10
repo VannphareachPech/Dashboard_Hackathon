@@ -176,7 +176,7 @@ export default async function DashboardPage() {
 
           <footer className="mt-10 pt-5 border-t border-slate-100">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-1 text-xs text-slate-400">
-              <span className="font-medium text-slate-500">Built by FAST and FIVE-IOUS & AI</span>
+              <span className="font-medium text-slate-500">Built by FAST and FIVE-IOUS with AI</span>
               <span>Data sourced from Google Sheets &middot; {cycle}</span>
             </div>
           </footer>
