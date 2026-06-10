@@ -125,7 +125,7 @@ export default async function DashboardPage() {
           </section>
 
           <GroupDivider />
-          <div className="mt-5 space-y-5">
+          <div id="analytics" className="mt-5 space-y-5 scroll-mt-20">
             <div className={`grid grid-cols-1 gap-5 items-stretch ${responseCounts && responseCounts.length > 0 ? "lg:grid-cols-2" : ""}`}>
               {responseCounts && responseCounts.length > 0 && (
                 <Section id="participation-trend" title="Participation Trends">
@@ -144,7 +144,7 @@ export default async function DashboardPage() {
           </div>
 
           <GroupDivider />
-          <div className="mt-5 space-y-5">
+          <div id="diagnostics" className="mt-5 space-y-5 scroll-mt-20">
             <Section id="area-scores" title="Area Scores">
               <ScoreChart areaScores={areaScores} />
             </Section>
@@ -163,7 +163,7 @@ export default async function DashboardPage() {
           </div>
 
           <GroupDivider />
-          <div className="mt-5 space-y-5">
+          <div id="next-steps" className="mt-5 space-y-5 scroll-mt-20">
             <Section id="comments-themes" title="AI Insights">
               <GeminiInsights
                 cycle={cycle}
@@ -174,7 +174,7 @@ export default async function DashboardPage() {
               />
             </Section>
 
-            <Section id="next-steps" title="Action Items">
+            <Section title="Action Items">
               <ActionTracker actions={actions} currentCycle={cycle} />
             </Section>
           </div>

@@ -3,44 +3,25 @@
 import { useEffect, useRef, useState } from "react";
 
 const SECTIONS = [
-  { id: "overview",            label: "Overview" },
-  { id: "participation-trend", label: "Participation" },
-  { id: "area-scores",         label: "Scores" },
-  { id: "response-mix",        label: "Sentiment" },
-  { id: "role-split",          label: "Roles" },
-  { id: "comments-themes",     label: "AI Insights" },
-  { id: "next-steps",          label: "Action Items" },
+  { id: "overview",    label: "Overview" },
+  { id: "analytics",   label: "Analytics" },
+  { id: "diagnostics", label: "Diagnostics" },
+  { id: "next-steps",  label: "Next Steps" },
 ] as const;
 
 export default function SectionNav() {
   const [activeId, setActiveId] = useState<string>("overview");
-  const [availableIds, setAvailableIds] = useState<Set<string>>(
-    () => new Set(SECTIONS.map((s) => s.id))
-  );
   const lockedId = useRef<string | null>(null);
   const lockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    const detectAvailableSections = () => {
-      const ids = SECTIONS
-        .filter(({ id }) => !!document.getElementById(id))
-        .map(({ id }) => id);
-      setAvailableIds(new Set(ids.length ? ids : [SECTIONS[0].id]));
-    };
-    detectAvailableSections();
-    window.addEventListener("resize", detectAvailableSections);
-    return () => window.removeEventListener("resize", detectAvailableSections);
-  }, []);
 
   useEffect(() => {
     const onScroll = () => {
       if (lockedId.current) return;
 
       const threshold = window.innerHeight * 0.35;
-      const visibleSections = SECTIONS.filter(({ id }) => availableIds.has(id));
-      let current: string = visibleSections[0]?.id ?? SECTIONS[0].id;
+      let current: string = SECTIONS[0].id;
 
-      for (const { id } of visibleSections) {
+      for (const { id } of SECTIONS) {
         const el = document.getElementById(id);
         if (el && el.getBoundingClientRect().top <= threshold) {
           current = id;
@@ -52,7 +33,7 @@ export default function SectionNav() {
     window.addEventListener("scroll", onScroll, { passive: true });
     onScroll();
     return () => window.removeEventListener("scroll", onScroll);
-  }, [availableIds]);
+  }, []);
 
   const scrollTo = (id: string) => {
     const el = document.getElementById(id);
@@ -77,7 +58,7 @@ export default function SectionNav() {
       <div className="max-w-7xl mx-auto px-4 sm:px-8">
         <div className="overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           <ul className="flex items-center justify-center gap-1.5 py-3 min-w-max mx-auto">
-            {SECTIONS.filter(({ id }) => availableIds.has(id)).map(({ id, label }) => {
+            {SECTIONS.map(({ id, label }) => {
               const isActive = activeId === id;
               return (
                 <li key={id}>
