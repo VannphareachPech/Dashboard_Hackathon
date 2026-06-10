@@ -130,7 +130,7 @@ export default function HeroScore({ summary, prevCycle, narrativeSummary }: Hero
                     {prevCycle && <span className="text-slate-400 font-normal"> vs {prevCycle}</span>}
                   </span>
 
-                  <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-800 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100">
+                  <span className="pointer-events-none absolute left-1/2 bottom-full z-20 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-800 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100">
                     {prevCycle ? `Compared to last pulse (${prevCycle})` : "Compared to last pulse"}
                   </span>
                 </span>
