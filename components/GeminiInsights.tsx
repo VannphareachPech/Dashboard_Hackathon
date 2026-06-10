@@ -365,7 +365,7 @@ export default function GeminiInsights({ cycle, summary, areaScores, trends, rec
               {result.rows.map((row: GeminiInsightRow, i: number) => (
                 <tr key={`${row.insight}-${i}`} className={i % 2 === 0 ? "bg-white" : "bg-slate-50"}>
                   <td className="px-4 py-3 font-medium text-slate-700 border-b border-slate-100 align-top">
-                    {row.roleGroupsMentioning}
+                    {String(row.roleGroupsMentioning).replace(/,([^\s])/g, ", $1")}
                   </td>
                   <td className="px-4 py-3 text-slate-600 border-b border-slate-100 align-top">
                     {row.insight}
