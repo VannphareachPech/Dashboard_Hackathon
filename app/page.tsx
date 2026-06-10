@@ -164,7 +164,7 @@ export default async function DashboardPage() {
 
           <GroupDivider />
           <div id="next-steps" className="mt-5 space-y-5 scroll-mt-20">
-            <Section id="comments-themes" title="AI Insights">
+            <Section id="comments-themes" title="Comments & Themes">
               <GeminiInsights
                 cycle={cycle}
                 summary={summary}
