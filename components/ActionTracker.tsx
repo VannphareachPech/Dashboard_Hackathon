@@ -209,10 +209,10 @@ export default function ActionTracker({ actions, currentCycle }: ActionTrackerPr
     <button
       type="button"
       onClick={() => setModalOpen(true)}
-      className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-sm transition-colors whitespace-nowrap"
+      className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 active:bg-indigo-800 transition-colors whitespace-nowrap"
     >
       Create Action
-      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
+      <svg className="h-4 w-4" viewBox="0 0 12 12" fill="none" aria-hidden>
         <path d="M2 6h8M6.5 2.5L10 6l-3.5 3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
       </svg>
     </button>

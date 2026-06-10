@@ -1,38 +1,24 @@
 import { fetchDashboardData } from "@/lib/fetchDashboard";
 import Header from "@/components/Header";
 import HeroScore from "@/components/HeroScore";
-import NarrativeBlock from "@/components/NarrativeBlock";
 import SignalStrip from "@/components/SignalStrip";
 import FocusArea from "@/components/FocusArea";
-import SummaryCard from "@/components/SummaryCard";
 import ScoreChart from "@/components/ScoreChart";
 import TrendChart from "@/components/TrendChart";
-import RecommendationTable from "@/components/RecommendationTable";
 import ActionTracker from "@/components/ActionTracker";
-import PulseQuestionTrendChart from "@/components/PulseQuestionTrendChart";
 import RoleSplitHeatmap from "@/components/RoleSplitHeatmap";
+import ResponseCountChart from "@/components/ResponseCountChart";
 import ResponseMixChart from "@/components/ResponseMixChart";
-import CurrentPulseBarChart from "@/components/CurrentPulseBarChart";
-import OverallResponseMixTrendChart from "@/components/OverallResponseMixTrendChart";
-import ResponseCountByPulseChart from "@/components/ResponseCountByPulseChart";
-import GeminiInsights from "@/components/GeminiInsights";
 import SectionNav from "@/components/SectionNav";
+import PulseQuestionTrendChart from "@/components/PulseQuestionTrendChart";
+import GeminiInsights from "@/components/GeminiInsights";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-function statusAccent(status: string): "green" | "amber" | "red" | "blue" {
-  const s = status.toLowerCase();
-  if (s === "strong") return "green";
-  if (s === "stable") return "blue";
-  if (s === "watch") return "amber";
-  if (s === "at risk") return "red";
-  return "blue";
-}
-
 function Section({ title, id, children }: { title: string; id?: string; children: React.ReactNode }) {
   return (
-    <section id={id} className="space-y-2.5 scroll-mt-20">
+    <section id={id} className="h-full min-w-0 flex flex-col space-y-2.5 scroll-mt-20">
       <h2 className="text-xl font-semibold tracking-tight text-slate-800">{title}</h2>
       {children}
     </section>
@@ -52,8 +38,7 @@ export default async function DashboardPage() {
         <div className="text-center">
           <h1 className="text-3xl font-bold text-slate-800 mb-2">No Data Available</h1>
           <p className="text-slate-600 mb-6 max-w-md">
-            The dashboard is not configured with a data source. Please set up the Apps Script
-            endpoint in your environment variables to load pulse survey data.
+            The dashboard is not configured with a data source. Please set up the Apps Script endpoint in your environment variables to load pulse survey data.
           </p>
           <div className="text-sm text-slate-500 font-mono bg-slate-100 p-4 rounded inline-block text-left">
             Set APPS_SCRIPT_URL in .env.local
@@ -72,8 +57,6 @@ export default async function DashboardPage() {
     trends,
     recommendations,
     actions,
-    responseAllRawData,
-    responseCurrentRawData,
     roleSplit,
     responseCounts,
     responseMix,
@@ -84,9 +67,9 @@ export default async function DashboardPage() {
   const currentCycleCount =
     responseCounts?.find((r) => r.cycle === cycle)?.responseCount ?? summary.totalResponses;
 
-  const lowestAreaData = areaScores.find((a) => a.area === summary.lowestArea);
-  const focusScore = lowestAreaData?.score ?? 0;
-  const focusPulsesAtRisk = lowestAreaData?.pulsesAtRisk;
+  const focusAreaEntry = areaScores.find((a) => a.area === summary.lowestArea);
+  const focusScore = focusAreaEntry?.score ?? summary.lowestAreaScore ?? 0;
+  const focusPulsesAtRisk = focusAreaEntry?.pulsesAtRisk ?? summary.lowestAreaPulsesAtRisk;
 
   const rankedAreas = [...areaScores].sort((a, b) => a.score - b.score);
   const focusRank = rankedAreas.findIndex((a) => a.area === summary.lowestArea) + 1;
@@ -108,8 +91,6 @@ export default async function DashboardPage() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-8 py-6">
         <main>
-
-          {/* ── GROUP 1 — Executive Snapshot ─────────────────────── */}
           <section id="overview" className="space-y-4 scroll-mt-20">
             <Header
               cycle={cycle}
@@ -119,28 +100,8 @@ export default async function DashboardPage() {
               participationTextOverride={process.env.DEMO_PARTICIPATION_TEXT}
             />
 
-            <HeroScore summary={summary} prevCycle={prevCycle} />
-
-            {narrativeSummary && (
-              <section id="executive-summary" className="scroll-mt-20">
-                <NarrativeBlock text={narrativeSummary} />
-              </section>
-            )}
-
-            <section className="space-y-2.5">
-              <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">
-                At a Glance
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                <SummaryCard
-                  label="Overall Status"
-                  value={summary.overallStatus}
-                  sub={`Score: ${summary.overallScore.toFixed(1)} / 5`}
-                  accent={statusAccent(summary.overallStatus)}
-                />
-                <SummaryCard label="Strongest Area" value={summary.highestArea} accent="green" />
-                <SummaryCard label="Needs Attention" value={summary.lowestArea} accent="amber" />
-              </div>
+            <section id="executive-summary" className="scroll-mt-20">
+              <HeroScore summary={summary} prevCycle={prevCycle} narrativeSummary={narrativeSummary} />
             </section>
 
             {summary.lowestArea && (
@@ -163,70 +124,27 @@ export default async function DashboardPage() {
             </section>
           </section>
 
-          {/* ── GROUP 2 — Pulse Analytics ────────────────────────── */}
-          <GroupDivider />
-          <div id="participation-trend" className="mt-5 space-y-5">
-
-            <Section title="Pulse Analytics">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div>
-                  <p className="text-sm font-semibold text-slate-600 mb-2">
-                    Pulse Question Score Trends
-                  </p>
-                  <PulseQuestionTrendChart trends={trends} />
-                </div>
-
-                <div>
-                  <p className="text-sm font-semibold text-slate-600 mb-2">
-                    Current Response Mix by Question
-                  </p>
-                  {responseCurrentRawData && responseCurrentRawData.length > 0 ? (
-                    <CurrentPulseBarChart responseCurrentRawData={responseCurrentRawData} />
-                  ) : (
-                    <div className="rounded-lg border border-slate-200 bg-white p-6 h-full flex items-center justify-center">
-                      <p className="text-sm text-slate-400">No current pulse data available</p>
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  <p className="text-sm font-semibold text-slate-600 mb-2">
-                    Response Count by Pulse
-                  </p>
-                  {responseAllRawData && responseAllRawData.length > 0 ? (
-                    <ResponseCountByPulseChart responseAllRawData={responseAllRawData} />
-                  ) : (
-                    <div className="rounded-lg border border-slate-200 bg-white p-6 h-full flex items-center justify-center">
-                      <p className="text-sm text-slate-400">No response data available</p>
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  <p className="text-sm font-semibold text-slate-600 mb-2">
-                    Overall Response Mix — Last 5 Pulses
-                  </p>
-                  {responseAllRawData && responseAllRawData.length > 0 ? (
-                    <OverallResponseMixTrendChart responseAllRawData={responseAllRawData} />
-                  ) : (
-                    <div className="rounded-lg border border-slate-200 bg-white p-6 h-full flex items-center justify-center">
-                      <p className="text-sm text-slate-400">No response data available</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </Section>
-
-            <Section title="Pulse History">
-              <TrendChart trends={trends} />
-            </Section>
-
-          </div>
-
-          {/* ── GROUP 3 — Diagnostic Insights ───────────────────── */}
           <GroupDivider />
           <div className="mt-5 space-y-5">
+            <div className={`grid grid-cols-1 gap-5 items-stretch ${responseCounts && responseCounts.length > 0 ? "lg:grid-cols-2" : ""}`}>
+              {responseCounts && responseCounts.length > 0 && (
+                <Section id="participation-trend" title="Participation Trends">
+                  <ResponseCountChart data={responseCounts} />
+                </Section>
+              )}
 
+              <Section title="Overall Sentiment Trends">
+                <TrendChart trends={trends} />
+              </Section>
+            </div>
+
+            <Section title="Focus Area Metrics">
+              <PulseQuestionTrendChart trends={trends} />
+            </Section>
+          </div>
+
+          <GroupDivider />
+          <div className="mt-5 space-y-5">
             <Section id="area-scores" title="Area Scores">
               <ScoreChart areaScores={areaScores} />
             </Section>
@@ -242,30 +160,11 @@ export default async function DashboardPage() {
                 <RoleSplitHeatmap rows={roleSplit} />
               </Section>
             )}
-
           </div>
 
-          {/* ── GROUP 4 — Leadership Actions ────────────────────── */}
           <GroupDivider />
-          <section id="next-steps" className="mt-5 scroll-mt-20 space-y-0">
-            <div className="mb-4">
-              <h2 className="text-base font-semibold tracking-tight text-slate-800">Next Steps</h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Themes and leadership responses to carry forward
-              </p>
-            </div>
-
-            <RecommendationTable recommendations={recommendations} />
-
-            <div className="pt-5 mt-5 border-t border-slate-100/80">
-              <ActionTracker actions={actions} currentCycle={cycle} />
-            </div>
-          </section>
-
-          {/* ── GROUP 5 — AI Insights ────────────────────────────── */}
-          <GroupDivider />
-          <div className="mt-5">
-            <Section title="AI Insights">
+          <div className="mt-5 space-y-5">
+            <Section id="comments-themes" title="AI Insights">
               <GeminiInsights
                 cycle={cycle}
                 summary={summary}
@@ -274,16 +173,18 @@ export default async function DashboardPage() {
                 recommendations={recommendations}
               />
             </Section>
+
+            <Section id="next-steps" title="Action Items">
+              <ActionTracker actions={actions} currentCycle={cycle} />
+            </Section>
           </div>
 
-          {/* ── Footer ──────────────────────────────────────────── */}
           <footer className="mt-10 pt-5 border-t border-slate-100">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-1 text-xs text-slate-400">
-              <span className="font-medium text-slate-500">B2CSS Pulse Dashboard</span>
+              <span className="font-medium text-slate-500">Built by FAST and FIVE-IOUS & AI</span>
               <span>Data sourced from Google Sheets &middot; {cycle}</span>
             </div>
           </footer>
-
         </main>
       </div>
     </>
