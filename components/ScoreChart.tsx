@@ -60,17 +60,26 @@ export default function ScoreChart({ areaScores }: ScoreChartProps) {
             dataKey="area"
             width={190}
             tick={(props) => (
-              <text
-                x={Number(props.x) - 185}
-                y={props.y}
-                dy={4}
-                textAnchor="start"
-                fontSize={14}
-                fill="#334155"
-                fontWeight={500}
-              >
-                {props.payload.value}
-              </text>
+              (() => {
+                const x = typeof props.x === "number" ? props.x : 0;
+                const y = typeof props.y === "number" ? props.y : 0;
+                const label = props?.payload && typeof props.payload.value === "string"
+                  ? props.payload.value
+                  : "";
+                return (
+                  <text
+                    x={x - 185}
+                    y={y}
+                    dy={4}
+                    textAnchor="start"
+                    fontSize={14}
+                    fill="#334155"
+                    fontWeight={500}
+                  >
+                    {label}
+                  </text>
+                );
+              })()
             )}
             axisLine={false}
             tickLine={false}

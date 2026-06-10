@@ -40,7 +40,7 @@ export default function ResponseCountChart({ data }: Props) {
         </p>
       </div>
       <div className="flex-1 min-h-[260px]">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height={260}>
         <BarChart data={chartData} margin={{ top: 16, right: 8, left: -16, bottom: 0 }} barCategoryGap="45%">
           <CartesianGrid strokeDasharray="2 4" vertical={false} stroke="#f1f5f9" />
           <XAxis

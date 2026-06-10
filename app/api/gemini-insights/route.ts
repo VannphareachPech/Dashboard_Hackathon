@@ -1,16 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-
-export interface GeminiInsightRow {
-  area: string;
-  insight: string;
-  recommendation: string;
-  priority: "High" | "Medium" | "Low";
-}
-
-export interface GeminiInsightsResponse {
-  rows: GeminiInsightRow[];
-  summary: string;
-}
+import type { GeminiInsightsResponse } from "@/types/gemini";
 
 function classifyDelta(delta: unknown) {
   if (typeof delta !== "number" || !Number.isFinite(delta)) return "unknown";

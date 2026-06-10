@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { GeminiInsightsResponse, GeminiInsightRow } from "@/app/api/gemini-insights/route";
+import type { GeminiInsightsResponse, GeminiInsightRow } from "@/types/gemini";
 
 type Priority = "High" | "Medium" | "Low";
 
@@ -19,6 +19,28 @@ interface Props {
   recommendations: object[];
 }
 
+function isGeminiInsightRow(value: unknown): value is GeminiInsightRow {
+  if (!value || typeof value !== "object") return false;
+  const row = value as Record<string, unknown>;
+  const priority = row.priority;
+  return (
+    typeof row.area === "string" &&
+    typeof row.insight === "string" &&
+    typeof row.recommendation === "string" &&
+    (priority === "High" || priority === "Medium" || priority === "Low")
+  );
+}
+
+function isGeminiInsightsResponse(value: unknown): value is GeminiInsightsResponse {
+  if (!value || typeof value !== "object") return false;
+  const payload = value as Record<string, unknown>;
+  return (
+    typeof payload.summary === "string" &&
+    Array.isArray(payload.rows) &&
+    payload.rows.every(isGeminiInsightRow)
+  );
+}
+
 export default function GeminiInsights({ cycle, summary, areaScores, trends, recommendations }: Props) {
   const cacheKey = `gemini_insights_${cycle}`;
 
@@ -32,7 +54,13 @@ export default function GeminiInsights({ cycle, summary, areaScores, trends, rec
   useEffect(() => {
     try {
       const cached = localStorage.getItem(cacheKey);
-      if (cached) setResult(JSON.parse(cached));
+      if (!cached) return;
+      const parsed = JSON.parse(cached);
+      if (isGeminiInsightsResponse(parsed)) {
+        setResult(parsed);
+      } else {
+        localStorage.removeItem(cacheKey);
+      }
     } catch { /* ignore parse errors */ }
   }, [cacheKey]);
 
@@ -75,7 +103,13 @@ export default function GeminiInsights({ cycle, summary, areaScores, trends, rec
           }
         }
       } else {
-        const insights = data as GeminiInsightsResponse;
+        if (!isGeminiInsightsResponse(data)) {
+          setError("Gemini response format was invalid. Please try again.");
+          try { localStorage.removeItem(cacheKey); } catch { /* ignore */ }
+          return;
+        }
+
+        const insights = data;
         setResult(insights);
         // Persist to localStorage so server restarts don't force a re-call
         try { localStorage.setItem(cacheKey, JSON.stringify(insights)); } catch { /* quota full */ }
@@ -95,7 +129,7 @@ export default function GeminiInsights({ cycle, summary, areaScores, trends, rec
         <div>
           <h3 className="text-base font-semibold text-slate-800">AI-Generated Insights</h3>
           <p className="text-xs text-slate-400 mt-0.5">
-            Powered by Gemini · Uses current pulse data to generate per-area recommendations
+            Powered by Gemini to produce area-specific recommendations from this pulse.
           </p>
         </div>
         <button
@@ -157,7 +191,7 @@ export default function GeminiInsights({ cycle, summary, areaScores, trends, rec
       )}
 
       {/* ── Table ─────────────────────────────────── */}
-      {result?.rows && result.rows.length > 0 && (
+      {Array.isArray(result?.rows) && result.rows.length > 0 && (
         <div className="overflow-x-auto">
           <table className="w-full text-sm border-collapse">
             <thead>
