@@ -11,6 +11,14 @@ type RoleSplitRowLike = {
 type StoredInsightEnvelope = {
   ok?: boolean;
   exists?: boolean;
+  found?: boolean;
+  // flat shape returned by Apps Script getAiInsightResponse_
+  summary?: string;
+  rows?: unknown[];
+  dataFingerprint?: string;
+  generatedBy?: string;
+  updatedAt?: string;
+  // nested shape (legacy / alternative deployment)
   insight?: {
     summary?: string;
     rows?: unknown[];
@@ -52,18 +60,26 @@ async function fetchStoredInsight(cycle: string) {
     const res = await fetch(url.toString(), { cache: "no-store" });
     if (!res.ok) return null;
     const payload = await res.json() as StoredInsightEnvelope;
-    if (!payload?.exists || !payload.insight) return null;
+    // Support both flat shape { found, summary, rows } and nested { exists, insight: { ... } }
+    const isFound = payload?.found === true || payload?.exists === true;
+    if (!isFound) return null;
 
-    const summary = String(payload.insight.summary || "").trim();
-    const rows = Array.isArray(payload.insight.rows) ? payload.insight.rows : [];
+    const summary = String(payload.summary || payload.insight?.summary || "").trim();
+    const rows = Array.isArray(payload.rows) ? payload.rows
+      : Array.isArray(payload.insight?.rows) ? payload.insight.rows
+      : [];
     if (!summary || rows.length === 0) return null;
+
+    const generatedAt = String(payload.updatedAt || payload.insight?.generatedAt || "").trim() || undefined;
+    const generatedBy = String(payload.generatedBy || payload.insight?.generatedBy || "").trim() || undefined;
+    const dataFingerprint = String(payload.dataFingerprint || payload.insight?.dataFingerprint || "").trim() || undefined;
 
     return {
       summary,
       rows,
-      generatedAt: String(payload.insight.generatedAt || "").trim() || undefined,
-      generatedBy: String(payload.insight.generatedBy || "").trim() || undefined,
-      dataFingerprint: String(payload.insight.dataFingerprint || "").trim() || undefined,
+      generatedAt,
+      generatedBy,
+      dataFingerprint,
     };
   } catch {
     return null;

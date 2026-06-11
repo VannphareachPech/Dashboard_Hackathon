@@ -350,7 +350,7 @@ export default function ActionTracker({ actions, currentCycle }: ActionTrackerPr
     return (
       <>
         {successBanner}
-        <div className="rounded-xl border border-slate-100 bg-white py-12 px-5 shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex items-center justify-between gap-4">
+        <div className="rounded-xl border border-slate-100 bg-white py-3 px-5 shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex items-center justify-between gap-4">
           <p className="text-sm text-slate-500">No leadership actions tracked yet.</p>
           {createActionButton}
         </div>
@@ -398,7 +398,7 @@ export default function ActionTracker({ actions, currentCycle }: ActionTrackerPr
                 const badge = statusStyles[a.status] ?? statusStyles["Planned"];
                 return (
                   <tr key={row.id} data-action-id={row.id} className={`group hover:bg-slate-50/40 transition-colors duration-100 ${justPinnedId === row.id ? "animate-pin-flash" : ""}`}>
-                    <td className="w-[40px] px-2 py-3.5 align-middle text-center">
+                    <td className="w-[40px] px-2 py-2 align-middle text-center">
                       <button
                         type="button"
                         title={a.isPinned ? "Unpin record" : "Pin record"}
@@ -415,10 +415,10 @@ export default function ActionTracker({ actions, currentCycle }: ActionTrackerPr
                         <Pin className="h-4 w-4" aria-hidden />
                       </button>
                     </td>
-                    <td className="w-[220px] px-2 py-3.5 text-left align-middle">
+                    <td className="w-[220px] px-2 py-2 text-left align-middle">
                       <span className="text-sm font-medium text-slate-900 whitespace-nowrap">{a.area ?? "—"}</span>
                     </td>
-                    <td className="w-[220px] px-2 py-3.5 text-left align-middle text-sm text-slate-700 max-w-0">
+                    <td className="w-[220px] px-2 py-2 text-left align-middle text-sm text-slate-700 max-w-0">
                       <button
                         type="button"
                         onClick={() =>
@@ -434,16 +434,16 @@ export default function ActionTracker({ actions, currentCycle }: ActionTrackerPr
                         <span className="underline-offset-2 group-hover:underline">{a.suggestedAction}</span>
                       </button>
                     </td>
-                    <td className="w-[190px] px-2 py-3.5 align-middle text-sm text-slate-700 max-w-0">
+                    <td className="w-[190px] px-2 py-2 align-middle text-sm text-slate-700 max-w-0">
                       <span className="block truncate" title={a.owner}>{a.owner}</span>
                     </td>
-                    <td className="w-[140px] px-2 py-3.5 text-left align-middle">
+                    <td className="w-[140px] px-2 py-2 text-left align-middle">
                       <span className="inline-flex items-center gap-2 text-sm text-slate-700 whitespace-nowrap">
                         <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusDot[a.status]}`} />
                         {a.status}
                       </span>
                     </td>
-                    <td className="w-[190px] px-2 text-left py-3.5 align-middle max-w-0">
+                    <td className="w-[190px] px-2 text-left py-2 align-middle max-w-0">
                       {a.notes ? (
                         <button
                           type="button"
@@ -463,7 +463,7 @@ export default function ActionTracker({ actions, currentCycle }: ActionTrackerPr
                         <span className="text-xs text-slate-300">—</span>
                       )}
                     </td>
-                    <td className="px-2 py-3.5 align-middle">
+                    <td className="px-2 py-2 align-middle">
                       <div className="flex items-center justify-center gap-2">
                         <button
                           type="button"

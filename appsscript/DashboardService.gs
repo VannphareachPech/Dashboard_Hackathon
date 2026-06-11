@@ -444,7 +444,11 @@ function getNarrativeSummary(ss, summary, trends) {
   if (custom && String(custom).trim()) return String(custom).trim();
 
   // Auto-generate from data
-  var score   = (summary.overallScore || 0).toFixed(1);
+  // Use latest trend score as source of truth (mirrors frontend trend-first logic).
+  var resolvedScore = (trends && trends.length > 0 && parseFloat(trends[trends.length - 1].overallScore) > 0)
+    ? parseFloat(trends[trends.length - 1].overallScore)
+    : (summary.overallScore || 0);
+  var score   = resolvedScore.toFixed(1);
   var status  = (summary.overallStatus || "Stable").toLowerCase();
   var lowest  = summary.lowestArea  || "\u2014";
   var highest = summary.highestArea || "\u2014";
